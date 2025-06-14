@@ -48,11 +48,12 @@ vector<double> likelihood_gradient(const vector<double> &x,
   vector<double> grad(x.size(), 0.0);
   for (size_t i = 0; i < m.size(); ++i) {
     double F_x = model(x);
-    for (size_t j = 0; j < x.size(); ++j) {
-      // Для простоты градиент по каждой переменной
-      grad[j] += (F_x - m[i]) / (sigma * sigma) *
-                 ((j == 0) ? 1.0 : ((j == 1) ? x[2] : x[1]));
-    }
+    double factor = (F_x - m[i]) / (sigma * sigma);
+
+    // Градиент по каждой переменной модели
+    grad[0] += factor * 1.0;  // Градиент по x0
+    grad[1] += factor * x[2]; // Градиент по x1
+    grad[2] += factor * x[1]; // Градиент по x2
   }
   return grad;
 }
@@ -118,10 +119,32 @@ void accept_or_reject(vector<double> &x, vector<double> &p, double epsilon,
   }
 }
 
-// Главная функция
+// Функция для выполнения MCMC
+vector<double> run_mcmc(const vector<double> &m, int num_samples,
+                        double epsilon, double sigma, int dim,
+                        int warmup_steps) {
+  vector<double> x(dim, 0.0); // Начальные параметры (x)
+  vector<double> p(dim, 0.0); // Начальные импульсы (p)
+
+  // Генерация случайного импульса
+  for (int i = 0; i < dim; ++i) {
+    p[i] = normal_random(0.0, 1.0); // Инициализация случайным моментом
+  }
+
+  // MCMC с HMC
+  double old_energy =
+      total_energy(x, p, m, sigma); // Инициализация полной энергии
+  for (int step = 0; step < num_samples + warmup_steps; ++step) {
+    accept_or_reject(x, p, epsilon, m, sigma, old_energy);
+  }
+
+  return x; // Возвращаем итоговые параметры x
+}
+
 int main() {
-  const int DIM = 3;            // Размерность параметров
-  const double epsilon = 0.01;  // Шаг интегрирования
+  const int DIM = 3; // Размерность параметров
+  const double epsilon =
+      0.0001;                   // Уменьшаем шаг интегрирования для стабильности
   const double sigma = 0.1;     // Стандартное отклонение шума
   const int BATCH_SIZE = 2000;  // Количество наблюдений
   const int NUM_SAMPLES = 500;  // Количество сэмплов
@@ -131,25 +154,13 @@ int main() {
   vector<double> m =
       generate_data(BATCH_SIZE, true_parameters, sigma); // Генерация данных m
 
-  // Инициализация параметров x и импульсов p
-  vector<double> x(DIM, 0.0); // Начальные параметры (x)
-  vector<double> p(DIM, 0.0); // Начальные импульсы (p)
-
-  // Генерация случайного импульса
-  for (int i = 0; i < DIM; ++i) {
-    p[i] = normal_random(0.0, 1.0); // Инициализация случайным моментом
-  }
-
-  // MCMC с HMC
-  double old_energy =
-      total_energy(x, p, m, sigma); // Инициализация полной энергии
-  for (int step = 0; step < NUM_SAMPLES + WARMUP_STEPS; ++step) {
-    accept_or_reject(x, p, epsilon, m, sigma, old_energy);
-  }
+  // Вычисление параметров с использованием MCMC
+  vector<double> estimated_params =
+      run_mcmc(m, NUM_SAMPLES, epsilon, sigma, DIM, WARMUP_STEPS);
 
   // Вывод результата
   cout << "Оцененные параметры x: ";
-  for (double xi : x) {
+  for (double xi : estimated_params) {
     cout << xi << " ";
   }
   cout << endl;

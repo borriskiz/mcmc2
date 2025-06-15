@@ -197,8 +197,8 @@ computeMean(const std::vector<std::vector<double>> &samples) {
 int main() {
   int dim = 3;              // Количество параметров
   int num_samples = 500;    // Количество выборок
-  int num_steps = 10;       // Количество шагов интегрирования
-  double epsilon = 0.1;     // Шаг по времени
+  int num_steps = 1000;       // Количество шагов интегрирования
+  double epsilon = 0.0001;     // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;
   double upperBound = 5.0;

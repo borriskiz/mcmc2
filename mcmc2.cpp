@@ -4,9 +4,8 @@
 #include <random>
 #include <vector>
 
-// Генерация случайного вектора с параметрами в пределах [lowBound,
-// upperBound]
-std::vector<double> generateRandomVector(double n, double lowerBd,
+// Генерация случайного вектора с параметрами в пределах [lowBound, upperBound]
+std::vector<double> generateRandomVector(int n, double lowerBd,
                                          double upperBd) {
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -17,14 +16,33 @@ std::vector<double> generateRandomVector(double n, double lowerBd,
   }
   return result;
 }
+
 // Класс для модели
 class Model {
 private:
-  std::vector<double> data;
-  double lowBound;
-  double upperBound;
-  double noiseStddev;             // Стандартное отклонение шума
-  std::vector<double> trueParams; // Истинные параметры (не будут выводиться)
+  std::vector<double> trueParams;
+  double noiseStddev; // Стандартное отклонение шума
+  double lowBound, upperBound;
+  int batchSize;
+
+public:
+  int DIM; // Размерность модели
+
+  Model(int dim, double noiseStddev, double lowBd, double upperBd,
+        int batchSize)
+      : DIM(dim), noiseStddev(noiseStddev), lowBound(lowBd),
+        upperBound(upperBd), batchSize(batchSize) {
+    trueParams = generateRandomVector(DIM, lowBound, upperBound);
+  }
+
+  // Функция модели, которую будем использовать для генерации данных
+  double function(const std::vector<double> &x) const {
+    double result = 0.0;
+    for (int i = 0; i < x.size(); ++i) {
+      result += x[i]; // Простая линейная модель
+    }
+    return result;
+  }
 
   // Генерация данных с добавлением шума
   std::vector<double> generateData() const {
@@ -32,86 +50,179 @@ private:
     std::mt19937 gen(rd());
     std::normal_distribution<> noise(0.0, noiseStddev); // Нормальный шум
 
-    std::vector<double> x;
+    std::vector<double> data;
     double function_value = function(trueParams);
-    for (int i = 0; i < BATCH_SIZE; ++i) { // 2000 измерений
-      x.push_back(function_value + noise(gen));
-    }
-    return x;
-  }
-
-  // Функция модели, которую будем использовать для генерации данных
-  double function(const std::vector<double> &x) const {
-    // Линейная функция вида f(x) = x[0] + x[1] * x[2] + ... (для простоты)
-    double result = 0.0;
-    for (int i = 0; i < DIM; ++i) {
-      result += x[i];
-    }
-    return result;
-  }
-
-public:
-  int DIM;        // Размерность модели
-  int BATCH_SIZE; // Размерность данных
-
-  Model(int dim, int batchSize, double noiseStddev, double lowBd,
-        double upperBd)
-      : DIM(dim), BATCH_SIZE(batchSize), noiseStddev(noiseStddev),
-        lowBound(lowBd), upperBound(upperBd) {
-    trueParams = generateRandomVector(DIM, lowBound, upperBound);
-  }
-
-  std::vector<double> getData() {
-    if (data.empty() || data.size() != BATCH_SIZE) {
-      data = generateData();
+    for (int i = 0; i < batchSize; ++i) {
+      data.push_back(function_value + noise(gen));
     }
     return data;
   }
 
-  std::vector<double> generateInitialGuess() const {
-    return generateRandomVector(DIM, lowBound, upperBound);
+  // Потенциальная энергия с использованием данных
+  double U(const std::vector<double> &x,
+           const std::vector<double> &data) const {
+    double sum = 0.0;
+    for (int i = 0; i < data.size(); ++i) {
+      double predicted = function(x);    // Прогнозируемое значение
+      double diff = data[i] - predicted; // Разница с измерением
+      sum += (diff * diff) / (2.0 * noiseStddev * noiseStddev); // Правдоподобие
+    }
+    return sum; // Потенциальная энергия
   }
 
-  std::vector<double> getTrueParams() const { return trueParams; }
+  // Гамильтониан: H(x, v) = U(x) + K(v), где K(v) = 0.5 * v^2 (кинетическая
+  // энергия)
+  double Hamiltonian(const std::vector<double> &x, const std::vector<double> &v,
+                     const std::vector<double> &data) const {
+    double U_val = U(x, data); // Потенциальная энергия
+    double K_val = 0.0;
+    for (double vi : v) {
+      K_val += vi * vi;
+    }
+    return U_val + 0.5 * K_val;
+  }
+
+  // Метод для генерации случайного импульса
+  std::vector<double> generateRandomMomentum() const {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution<> dis(0.0, 1.0); // нормальное распределение
+    std::vector<double> momentum(DIM);
+    for (int i = 0; i < DIM; ++i) {
+      momentum[i] = dis(gen);
+    }
+    return momentum;
+  }
+
+  // Функция для вычисления градиента
+  std::vector<double> gradient(const std::vector<double> &x,
+                               const std::vector<double> &data) const {
+    std::vector<double> grad(DIM, 0.0);
+    for (int i = 0; i < data.size(); ++i) {
+      double predicted = function(x);    // Прогнозируемое значение
+      double diff = data[i] - predicted; // Разница с измерением
+      for (int j = 0; j < DIM; ++j) {
+        grad[j] += -diff * 1.0 / (noiseStddev * noiseStddev); // Градиент по x
+      }
+    }
+    return grad;
+  }
 };
-void printVector(const std::vector<double> &vec, int upBound = -1) {
 
-  if (upBound == -1) {
-    upBound = static_cast<int>(vec.size());
-  }
-  for (int i = 0; i < upBound; i++) {
-    std::cout << vec[i] << " ";
-  }
+// Функция для численного интегрирования (метод Эйлера)
+void integrate(std::vector<double> &x, std::vector<double> &v,
+               const Model &model, const std::vector<double> &data,
+               double epsilon, int num_steps) {
+  for (int i = 0; i < num_steps; ++i) {
+    // Обновление x по v
+    for (int j = 0; j < x.size(); ++j) {
+      x[j] += epsilon * v[j];
+    }
 
-  std::cout << "\n";
+    // Вычисляем градиент
+    std::vector<double> grad = model.gradient(x, data);
+
+    // Обновление v по градиенту
+    for (int j = 0; j < v.size(); ++j) {
+      v[j] -= epsilon * grad[j];
+    }
+  }
 }
+
+// Функция для выполнения HMC
+std::vector<std::vector<double>> hmc(Model &model,
+                                     const std::vector<double> &initial_x,
+                                     int num_samples, double epsilon,
+                                     int num_steps) {
+  std::vector<double> x = initial_x;
+  std::vector<std::vector<double>>
+      samples; // Матрица выборок (num_samples x DIM)
+
+  // Генерация данных (batch)
+  std::vector<double> data = model.generateData();
+
+  for (int n = 0; n < num_samples; ++n) {
+    // 1. Генерация случайного импульса
+    std::vector<double> v = model.generateRandomMomentum();
+
+    // 2. Чтение начальных условий для HMC
+    std::vector<double> x_new = x;
+    std::vector<double> v_new = v;
+
+    // 3. Численное интегрирование
+    integrate(x_new, v_new, model, data, epsilon, num_steps);
+
+    // 4. Вычисление гамильтониана
+    double H_old = model.Hamiltonian(x, v, data);
+    double H_new = model.Hamiltonian(x_new, v_new, data);
+
+    // 5. Принятие решения по методу Метрополиса
+    double alpha = std::min(1.0, exp(H_old - H_new));
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+    double u = dis(gen);
+
+    if (u < alpha) {
+      x = x_new; // Принимаем новую точку
+    }
+
+    // Добавляем выборку в матрицу
+    samples.push_back(x); // Каждая выборка — вектор с размерностью DIM
+  }
+
+  return samples;
+}
+
+// Функция для вычисления среднего по каждому параметру
+std::vector<double>
+computeMean(const std::vector<std::vector<double>> &samples) {
+  std::vector<double> mean(samples[0].size(), 0.0);
+  int num_samples = samples.size();
+
+  for (const auto &sample : samples) {
+    for (int i = 0; i < sample.size(); ++i) {
+      mean[i] += sample[i];
+    }
+  }
+
+  // Делим на количество выборок для получения среднего
+  for (int i = 0; i < mean.size(); ++i) {
+    mean[i] /= num_samples;
+  }
+
+  return mean;
+}
+
 int main() {
-  // Параметры модели
-  int dim = 3;              // Размерность модели
-  int batchSize = 2000;     // Размерность модели
+  int dim = 3;              // Количество параметров
+  int num_samples = 500;    // Количество выборок
+  int num_steps = 10;       // Количество шагов интегрирования
+  double epsilon = 0.1;     // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
-  double up = 5.0;          // Верхняя граница параметров
-  double down = -5.0;       // Нижняя граница параметров
+  double lowBound = -5.0;
+  double upperBound = 5.0;
+  int batchSize = 2000; // Размер batch
 
-  // Создание объекта модели
-  Model model(dim, batchSize, noiseStddev, down, up);
+  Model model(dim, noiseStddev, lowBound, upperBound, batchSize);
 
-  // Генерация данных
-  std::vector<double> data = model.getData();
+  // Инициализация начального вектора
+  // std::vector<double> initial_x =
+  //    generateRandomVector(dim, lowBound, upperBound);
+  std::vector<double> initial_x = std::vector<double>(dim, 0.0);
+  // Запуск HMC
+  std::vector<std::vector<double>> samples =
+      hmc(model, initial_x, num_samples, epsilon, num_steps);
 
-  // Генерация начальных значений для параметров
-  std::vector<double> initialGuess = model.generateInitialGuess();
-  std::vector<double> trueParams = model.getTrueParams();
+  // Вычисление среднего по каждому параметру
+  std::vector<double> mean = computeMean(samples);
 
-  // Вывод для проверки (не показываем истинные параметры!)
-  std::cout << "Generated data (first 10 values): ";
-  printVector(data, 10);
-
-  std::cout << "True Params (hidden from output): ";
-  printVector(trueParams);
-
-  std::cout << "Initial guess for parameters: ";
-  printVector(initialGuess);
+  std::cout << "\nMean of each parameter after " << num_samples
+            << " samples:" << std::endl;
+  for (double m : mean) {
+    std::cout << m << " ";
+  }
+  std::cout << std::endl;
 
   return 0;
 }

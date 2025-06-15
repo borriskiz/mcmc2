@@ -253,7 +253,7 @@ void plotHistogram(const std::string &filename) {
   std::string command = "gnuplot -e \"set terminal png; set output '" +
                         filename + ".png'; plot '" + filename +
                         ".txt' using 1:2 with boxes\"";
-  system(command.c_str()); // Запуск gnuplot
+  system(command.c_str());
 }
 
 int main() {
@@ -262,9 +262,9 @@ int main() {
   int num_steps = 100;      // Количество шагов интегрирования
   double epsilon = 0.0001;  // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
-  double lowBound = -5.0;
-  double upperBound = 5.0;
-  int batchSize = 2000; // Размер batch
+  double lowBound = -5.0;   // Нижняя граница параметров
+  double upperBound = 5.0; // Верхняя граница параметров
+  int batchSize = 2000;    // Размер batch
 
   Model model(dim, noiseStddev, lowBound, upperBound, batchSize);
 

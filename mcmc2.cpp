@@ -1,6 +1,9 @@
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <random>
 #include <vector>
 
@@ -24,6 +27,7 @@ private:
   double noiseStddev; // Стандартное отклонение шума
   double lowBound, upperBound;
   int batchSize;
+  std::vector<double> DATA;
 
 public:
   int DIM; // Размерность модели
@@ -32,7 +36,8 @@ public:
         int batchSize)
       : DIM(dim), noiseStddev(noiseStddev), lowBound(lowBd),
         upperBound(upperBd), batchSize(batchSize) {
-    trueParams = generateRandomVector(DIM, lowBound, upperBound);
+    // trueParams = generateRandomVector(DIM, lowBound, upperBound);
+    trueParams = {1.0, 2.0, 3.0};
   }
 
   // Функция модели, которую будем использовать для генерации данных
@@ -45,17 +50,20 @@ public:
   }
 
   // Генерация данных с добавлением шума
-  std::vector<double> generateData() const {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::normal_distribution<> noise(0.0, noiseStddev); // Нормальный шум
+  std::vector<double> getData() {
+    if (DATA.empty()) {
+      std::random_device rd;
+      std::mt19937 gen(rd());
+      std::normal_distribution<> noise(0.0, noiseStddev); // Нормальный шум
 
-    std::vector<double> data;
-    double function_value = function(trueParams);
-    for (int i = 0; i < batchSize; ++i) {
-      data.push_back(function_value + noise(gen));
+      std::vector<double> data;
+      double function_value = function(trueParams);
+      for (int i = 0; i < batchSize; ++i) {
+        data.push_back(function_value + noise(gen));
+      }
+      DATA = data;
     }
-    return data;
+    return DATA;
   }
 
   // Потенциальная энергия с использованием данных
@@ -139,7 +147,7 @@ std::vector<std::vector<double>> hmc(Model &model,
       samples; // Матрица выборок (num_samples x DIM)
 
   // Генерация данных (batch)
-  std::vector<double> data = model.generateData();
+  std::vector<double> data = model.getData();
 
   for (int n = 0; n < num_samples; ++n) {
     // 1. Генерация случайного импульса
@@ -166,7 +174,6 @@ std::vector<std::vector<double>> hmc(Model &model,
     if (u < alpha) {
       x = x_new; // Принимаем новую точку
     }
-
     // Добавляем выборку в матрицу
     samples.push_back(x); // Каждая выборка — вектор с размерностью DIM
   }
@@ -194,11 +201,50 @@ computeMean(const std::vector<std::vector<double>> &samples) {
   return mean;
 }
 
+// Функция для вычисления гистограммы с частотами
+std::map<double, int> computeHistogram(const std::vector<double> &data,
+                                       int num_bins) {
+  std::map<double, int> histogram;
+  double min_val = *std::min_element(data.begin(), data.end());
+  double max_val = *std::max_element(data.begin(), data.end());
+  double bin_width = (max_val - min_val) / num_bins;
+
+  for (double val : data) {
+    int bin = static_cast<int>((val - min_val) / bin_width);
+    if (bin == num_bins)
+      bin--; // В случае, если значение на верхней границе
+    double bin_center = min_val + (bin + 0.5) * bin_width;
+    histogram[bin_center]++;
+  }
+  return histogram;
+}
+
+// Функция для записи данных гистограммы в файл
+void saveHistogramToFile(const std::map<double, int> &histogram,
+                         const std::string &filename, int dataSize) {
+  std::ofstream outFile(filename + ".txt");
+  double dSize = static_cast<double>(dataSize);
+  for (const auto &elem : histogram) {
+    double bin_center = elem.first;
+    double count = static_cast<double>(elem.second);
+    outFile << bin_center << " " << count / dSize << "\n";
+  }
+  outFile.close();
+}
+
+// Функция для построения гистограммы с использованием gnuplot
+void plotHistogram(const std::string &filename) {
+  std::string command = "gnuplot -e \"set terminal png; set output '" +
+                        filename + ".png'; plot '" + filename +
+                        ".txt' using 1:2 with boxes\"";
+  system(command.c_str()); // Запуск gnuplot
+}
+
 int main() {
   int dim = 3;              // Количество параметров
   int num_samples = 500;    // Количество выборок
-  int num_steps = 1000;       // Количество шагов интегрирования
-  double epsilon = 0.0001;     // Шаг по времени
+  int num_steps = 1000;     // Количество шагов интегрирования
+  double epsilon = 0.0001;  // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;
   double upperBound = 5.0;
@@ -207,8 +253,6 @@ int main() {
   Model model(dim, noiseStddev, lowBound, upperBound, batchSize);
 
   // Инициализация начального вектора
-  // std::vector<double> initial_x =
-  //    generateRandomVector(dim, lowBound, upperBound);
   std::vector<double> initial_x = std::vector<double>(dim, 0.0);
   // Запуск HMC
   std::vector<std::vector<double>> samples =
@@ -224,5 +268,14 @@ int main() {
   }
   std::cout << std::endl;
 
+  auto inputData = model.getData();
+  int num_bins = 50; // Количество бинов для гистограммы
+  auto histogram = computeHistogram(inputData, num_bins);
+
+  // Сохраняем гистограмму в файл
+  saveHistogramToFile(histogram, "inputData", batchSize);
+
+  // Строим гистограмму с использованием gnuplot
+  plotHistogram("inputData");
   return 0;
 }

@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 #include <random>
+#include <string>
 #include <vector>
 
 // Генерация случайного вектора с параметрами в пределах [lowBound, upperBound]
@@ -27,7 +28,7 @@ private:
   double noiseStddev; // Стандартное отклонение шума
   double lowBound, upperBound;
   int batchSize;
-  std::vector<double> DATA;
+  std::vector<std::vector<double>> DATA; // Матрица данных
 
 public:
   int DIM; // Размерность модели
@@ -38,19 +39,22 @@ public:
         upperBound(upperBd), batchSize(batchSize) {
     trueParams = {1.0, 2.0, 3.0};
   }
+
   // Генерация данных с добавлением шума
-  std::vector<double> getData() {
+  std::vector<std::vector<double>> getData() {
     if (DATA.empty()) {
       std::random_device rd;
       std::mt19937 gen(rd());
       std::normal_distribution<> noise(0.0, noiseStddev); // Нормальный шум
 
-      std::vector<double> data;
+      std::vector<std::vector<double>> data;
       std::vector<double> function_value = function(trueParams);
       for (int i = 0; i < batchSize; ++i) {
-        data.push_back(
-            function_value[0] +
-            noise(gen)); // Используем только первое значение из вектора
+        std::vector<double> noisy_data;
+        for (int j = 0; j < function_value.size(); ++j) {
+          noisy_data.push_back(function_value[j] + noise(gen)); // Добавляем шум
+        }
+        data.push_back(noisy_data);
       }
       DATA = data;
     }
@@ -69,19 +73,20 @@ public:
     return result;
   }
 
-
   // Потенциальная энергия с использованием данных
   double U(const std::vector<double> &x,
-           const std::vector<double> &data) const {
+           const std::vector<std::vector<double>> &data) const {
     double sum = 0.0;
     std::vector<double> predicted =
         function(x); // Получаем вектор предсказанных значений
 
-    // Используем только первое значение для оценки
+    // Для каждого столбца (каждого измерения) находим разницу
     for (int i = 0; i < data.size(); ++i) {
-      double diff =
-          data[i] - predicted[0]; // Сравниваем с первым значением в векторе
-      sum += (diff * diff) / (2.0 * noiseStddev * noiseStddev); // Правдоподобие
+      for (int j = 0; j < data[i].size(); ++j) {
+        double diff = data[i][j] - predicted[j];
+        sum +=
+            (diff * diff) / (2.0 * noiseStddev * noiseStddev); // Правдоподобие
+      }
     }
     return sum; // Потенциальная энергия
   }
@@ -89,7 +94,7 @@ public:
   // Гамильтониан: H(x, v) = U(x) + K(v), где K(v) = 0.5 * v^2 (кинетическая
   // энергия)
   double Hamiltonian(const std::vector<double> &x, const std::vector<double> &v,
-                     const std::vector<double> &data) const {
+                     const std::vector<std::vector<double>> &data) const {
     double U_val = U(x, data); // Потенциальная энергия
     double K_val = 0.0;
     for (double vi : v) {
@@ -111,16 +116,17 @@ public:
   }
 
   // Функция для вычисления градиента
-  std::vector<double> gradient(const std::vector<double> &x,
-                               const std::vector<double> &data) const {
+  std::vector<double>
+  gradient(const std::vector<double> &x,
+           const std::vector<std::vector<double>> &data) const {
     std::vector<double> grad(DIM, 0.0);
     std::vector<double> predicted =
         function(x); // Получаем вектор предсказанных значений
-
+    double noiseStddev2 = noiseStddev * noiseStddev;
     for (int i = 0; i < data.size(); ++i) {
-      double diff = data[i] - predicted[0]; // Используем только первое значение
-      for (int j = 0; j < DIM; ++j) {
-        grad[j] += -diff * 1.0 / (noiseStddev * noiseStddev); // Градиент по x
+      for (int j = 0; j < data[i].size(); ++j) {
+        double diff = data[i][j] - predicted[j];
+        grad[j] += -diff / noiseStddev2; // Градиент по x
       }
     }
     return grad;
@@ -129,7 +135,7 @@ public:
 
 // Функция для численного интегрирования (метод Эйлера)
 void integrate(std::vector<double> &x, std::vector<double> &v,
-               const Model &model, const std::vector<double> &data,
+               const Model &model, const std::vector<std::vector<double>> &data,
                double epsilon, int num_steps) {
   for (int i = 0; i < num_steps; ++i) {
     // Обновление x по v
@@ -157,7 +163,7 @@ std::vector<std::vector<double>> hmc(Model &model,
       samples; // Матрица выборок (num_samples x DIM)
 
   // Генерация данных (batch)
-  std::vector<double> data = model.getData();
+  std::vector<std::vector<double>> data = model.getData();
 
   for (int n = 0; n < num_samples; ++n) {
     // 1. Генерация случайного импульса
@@ -195,7 +201,7 @@ std::vector<std::vector<double>> hmc(Model &model,
 std::vector<double>
 computeMean(const std::vector<std::vector<double>> &samples) {
   std::vector<double> mean(samples[0].size(), 0.0);
-  int num_samples = samples.size();
+  double num_samples = static_cast<double>(samples.size());
 
   for (const auto &sample : samples) {
     for (int i = 0; i < sample.size(); ++i) {
@@ -253,8 +259,8 @@ void plotHistogram(const std::string &filename) {
 int main() {
   int dim = 3;              // Количество параметров
   int num_samples = 200;    // Количество выборок
-  int num_steps = 1000;     // Количество шагов интегрирования
-  double epsilon = 0.001;  // Шаг по времени
+  int num_steps = 100;      // Количество шагов интегрирования
+  double epsilon = 0.0001;  // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;
   double upperBound = 5.0;
@@ -279,15 +285,27 @@ int main() {
   }
   std::cout << std::endl;
 
+  // Получаем сгенерированные данные
   auto inputData = model.getData();
   int num_bins = 50; // Количество бинов для гистограммы
-  auto histogram = computeHistogram(inputData, num_bins);
 
-  // Сохраняем гистограмму в файл
-  saveHistogramToFile(histogram, "inputData", batchSize);
+  // Генерация и сохранение гистограмм для каждого столбца
+  for (int i = 0; i < inputData[0].size(); ++i) {
+    std::vector<double> column_data;
+    for (const auto &row : inputData) {
+      column_data.push_back(row[i]);
+    }
 
-  // Строим гистограмму с использованием gnuplot
-  plotHistogram("inputData");
+    // Вычисление гистограммы
+    auto histogram = computeHistogram(column_data, num_bins);
+
+    // Сохраняем гистограмму для каждого столбца
+    std::string filename = "inputData_column_" + std::to_string(i);
+    saveHistogramToFile(histogram, filename, batchSize);
+
+    // Строим гистограмму с использованием gnuplot
+    plotHistogram(filename);
+  }
 
   return 0;
 }

@@ -36,19 +36,8 @@ public:
         int batchSize)
       : DIM(dim), noiseStddev(noiseStddev), lowBound(lowBd),
         upperBound(upperBd), batchSize(batchSize) {
-    // trueParams = generateRandomVector(DIM, lowBound, upperBound);
     trueParams = {1.0, 2.0, 3.0};
   }
-
-  // Функция модели, которую будем использовать для генерации данных
-  double function(const std::vector<double> &x) const {
-    double result = 0.0;
-    for (int i = 0; i < x.size(); ++i) {
-      result += x[i]; // Простая линейная модель
-    }
-    return result;
-  }
-
   // Генерация данных с добавлением шума
   std::vector<double> getData() {
     if (DATA.empty()) {
@@ -57,22 +46,41 @@ public:
       std::normal_distribution<> noise(0.0, noiseStddev); // Нормальный шум
 
       std::vector<double> data;
-      double function_value = function(trueParams);
+      std::vector<double> function_value = function(trueParams);
       for (int i = 0; i < batchSize; ++i) {
-        data.push_back(function_value + noise(gen));
+        data.push_back(
+            function_value[0] +
+            noise(gen)); // Используем только первое значение из вектора
       }
       DATA = data;
     }
     return DATA;
   }
 
+  // Функция модели, которая возвращает вектор значений
+  std::vector<double> function(const std::vector<double> &x) const {
+    std::vector<double> result;
+    // x1 + x2
+    result.push_back(x[0] + x[1]);
+    // x1 * x2
+    result.push_back(x[0] * x[1]);
+    // x2 * x3
+    result.push_back(x[1] * x[2]);
+    return result;
+  }
+
+
   // Потенциальная энергия с использованием данных
   double U(const std::vector<double> &x,
            const std::vector<double> &data) const {
     double sum = 0.0;
+    std::vector<double> predicted =
+        function(x); // Получаем вектор предсказанных значений
+
+    // Используем только первое значение для оценки
     for (int i = 0; i < data.size(); ++i) {
-      double predicted = function(x);    // Прогнозируемое значение
-      double diff = data[i] - predicted; // Разница с измерением
+      double diff =
+          data[i] - predicted[0]; // Сравниваем с первым значением в векторе
       sum += (diff * diff) / (2.0 * noiseStddev * noiseStddev); // Правдоподобие
     }
     return sum; // Потенциальная энергия
@@ -106,9 +114,11 @@ public:
   std::vector<double> gradient(const std::vector<double> &x,
                                const std::vector<double> &data) const {
     std::vector<double> grad(DIM, 0.0);
+    std::vector<double> predicted =
+        function(x); // Получаем вектор предсказанных значений
+
     for (int i = 0; i < data.size(); ++i) {
-      double predicted = function(x);    // Прогнозируемое значение
-      double diff = data[i] - predicted; // Разница с измерением
+      double diff = data[i] - predicted[0]; // Используем только первое значение
       for (int j = 0; j < DIM; ++j) {
         grad[j] += -diff * 1.0 / (noiseStddev * noiseStddev); // Градиент по x
       }
@@ -242,9 +252,9 @@ void plotHistogram(const std::string &filename) {
 
 int main() {
   int dim = 3;              // Количество параметров
-  int num_samples = 500;    // Количество выборок
+  int num_samples = 200;    // Количество выборок
   int num_steps = 1000;     // Количество шагов интегрирования
-  double epsilon = 0.0001;  // Шаг по времени
+  double epsilon = 0.001;  // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;
   double upperBound = 5.0;
@@ -254,6 +264,7 @@ int main() {
 
   // Инициализация начального вектора
   std::vector<double> initial_x = std::vector<double>(dim, 0.0);
+
   // Запуск HMC
   std::vector<std::vector<double>> samples =
       hmc(model, initial_x, num_samples, epsilon, num_steps);
@@ -277,5 +288,6 @@ int main() {
 
   // Строим гистограмму с использованием gnuplot
   plotHistogram("inputData");
+
   return 0;
 }

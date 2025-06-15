@@ -34,7 +34,7 @@ private:
 
     std::vector<double> x;
     double function_value = function(trueParams);
-    for (int i = 0; i < SAMPLE_SIZE; ++i) { // 2000 измерений
+    for (int i = 0; i < BATCH_SIZE; ++i) { // 2000 измерений
       x.push_back(function_value + noise(gen));
     }
     return x;
@@ -51,18 +51,18 @@ private:
   }
 
 public:
-  int DIM;         // Размерность модели
-  int SAMPLE_SIZE; // Размерность данных
+  int DIM;        // Размерность модели
+  int BATCH_SIZE; // Размерность данных
 
-  Model(int dim, int sampleSize, double noiseStddev, double lowBd,
+  Model(int dim, int batchSize, double noiseStddev, double lowBd,
         double upperBd)
-      : DIM(dim), SAMPLE_SIZE(sampleSize), noiseStddev(noiseStddev),
+      : DIM(dim), BATCH_SIZE(batchSize), noiseStddev(noiseStddev),
         lowBound(lowBd), upperBound(upperBd) {
     trueParams = generateRandomVector(DIM, lowBound, upperBound);
   }
 
   std::vector<double> getData() {
-    if (data.empty() || data.size() != SAMPLE_SIZE) {
+    if (data.empty() || data.size() != BATCH_SIZE) {
       data = generateData();
     }
     return data;
@@ -88,13 +88,13 @@ void printVector(const std::vector<double> &vec, int upBound = -1) {
 int main() {
   // Параметры модели
   int dim = 3;              // Размерность модели
-  int sampleSize = 2000;    // Размерность модели
+  int batchSize = 2000;     // Размерность модели
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double up = 5.0;          // Верхняя граница параметров
   double down = -5.0;       // Нижняя граница параметров
 
   // Создание объекта модели
-  Model model(dim, sampleSize, noiseStddev, down, up);
+  Model model(dim, batchSize, noiseStddev, down, up);
 
   // Генерация данных
   std::vector<double> data = model.getData();

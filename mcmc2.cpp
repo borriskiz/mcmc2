@@ -23,8 +23,8 @@ double model(const vector<double> &x) {
 vector<double> generate_data(int batch_size, const vector<double> &true_params,
                              double noise_stddev) {
   vector<double> data(batch_size);
-  for (int i = 0; i < batch_size; ++i) {
-    data[i] =
+  for (double &datum : data) {
+    datum =
         model(true_params) + normal_random(0.0, noise_stddev); // Добавляем шум
   }
   return data;
@@ -67,6 +67,14 @@ double kinetic_energy(const vector<double> &p) {
   return energy;
 }
 
+// Полная энергия (потенциальная + кинетическая)
+double total_energy(const vector<double> &x, const vector<double> &p,
+                    const vector<double> &m, double sigma) {
+  double U = -log_likelihood(x, m, sigma); // Потенциальная энергия
+  double K = kinetic_energy(p);            // Кинетическая энергия
+  return U + K;                            // Полная энергия
+}
+
 // Обновление параметров x и импульсов p
 void hmc_step(vector<double> &x, vector<double> &p, double epsilon,
               const vector<double> &m, double sigma) {
@@ -86,14 +94,6 @@ void hmc_step(vector<double> &x, vector<double> &p, double epsilon,
   for (size_t i = 0; i < p.size(); ++i) {
     p[i] -= 0.5 * epsilon * grad_L[i]; // Обновление импульса
   }
-}
-
-// Полная энергия (потенциальная + кинетическая)
-double total_energy(const vector<double> &x, const vector<double> &p,
-                    const vector<double> &m, double sigma) {
-  double U = -log_likelihood(x, m, sigma); // Потенциальная энергия
-  double K = kinetic_energy(p);            // Кинетическая энергия
-  return U + K;                            // Полная энергия
 }
 
 // Правило приема/отклонения
@@ -142,7 +142,8 @@ vector<double> run_mcmc(const vector<double> &m, int num_samples,
 }
 
 int main() {
-  const int DIM = 3; // Размерность параметров
+  vector<double> true_parameters = {1.0, 2.0, 3.0}; // Истинные параметры
+  const int DIM = true_parameters.size();           // Размерность параметров
   const double epsilon =
       0.0001;                   // Уменьшаем шаг интегрирования для стабильности
   const double sigma = 0.1;     // Стандартное отклонение шума
@@ -150,7 +151,6 @@ int main() {
   const int NUM_SAMPLES = 500;  // Количество сэмплов
   const int WARMUP_STEPS = 300; // Количество шагов разогрева
 
-  vector<double> true_parameters = {1.0, 2.0, 3.0}; // Истинные параметры
   vector<double> m =
       generate_data(BATCH_SIZE, true_parameters, sigma); // Генерация данных m
 

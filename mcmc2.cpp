@@ -258,13 +258,13 @@ void plotHistogram(const std::string &filename) {
 
 int main() {
   int dim = 3;              // Количество параметров
-  int num_samples = 200;    // Количество выборок
+  int sampleSize = 200;     // Количество выборок
   int num_steps = 100;      // Количество шагов интегрирования
   double epsilon = 0.0001;  // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;   // Нижняя граница параметров
-  double upperBound = 5.0; // Верхняя граница параметров
-  int batchSize = 2000;    // Размер batch
+  double upperBound = 5.0;  // Верхняя граница параметров
+  int batchSize = 2000;     // Размер batch
 
   Model model(dim, noiseStddev, lowBound, upperBound, batchSize);
 
@@ -273,12 +273,12 @@ int main() {
 
   // Запуск HMC
   std::vector<std::vector<double>> samples =
-      hmc(model, initial_x, num_samples, epsilon, num_steps);
+      hmc(model, initial_x, sampleSize, epsilon, num_steps);
 
   // Вычисление среднего по каждому параметру
   std::vector<double> mean = computeMean(samples);
 
-  std::cout << "\nMean of each parameter after " << num_samples
+  std::cout << "\nMean of each parameter after " << sampleSize
             << " samples:" << std::endl;
   for (double m : mean) {
     std::cout << m << " ";
@@ -301,7 +301,7 @@ int main() {
 
     // Сохраняем гистограмму для каждого столбца
     std::string filename = "inputData_column_" + std::to_string(i);
-    saveHistogramToFile(histogram, filename, batchSize);
+    saveHistogramToFile(histogram, filename, sampleSize);
 
     // Строим гистограмму с использованием gnuplot
     plotHistogram(filename);

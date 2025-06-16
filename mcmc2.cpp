@@ -162,20 +162,22 @@ void integrate(std::vector<double> &x, std::vector<double> &v,
   }
 }
 
-
 // Функция для выполнения HMC
 std::vector<std::vector<double>> hmc(Model &model,
                                      const std::vector<double> &initial_x,
                                      int num_samples, double epsilon,
                                      int num_steps) {
   std::vector<double> x = initial_x;
-  std::vector<std::vector<double>>
-      samples; // Матрица выборок (num_samples x DIM)
+  std::vector<std::vector<double>> samples;
 
   // Генерация данных (batch)
   std::vector<std::vector<double>> data = model.getData();
 
   for (int n = 0; n < num_samples; ++n) {
+    if (n % (num_samples / 10) == 0) { // Печатаем процент каждый 10% выполнения
+      std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
+    }
+
     // 1. Генерация случайного импульса
     std::vector<double> v = model.generateRandomMomentum();
 
@@ -269,8 +271,8 @@ void plotHistogram(const std::string &filename) {
 int main() {
   int dim = 3;              // Количество параметров
   int sampleSize = 200;     // Количество выборок
-  int num_steps = 1000;      // Количество шагов интегрирования
-  double epsilon = 0.0001;  // Шаг по времени
+  int num_steps = 1000;     // Количество шагов интегрирования
+  double epsilon = 0.00001; // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;   // Нижняя граница параметров
   double upperBound = 5.0;  // Верхняя граница параметров

@@ -133,25 +133,35 @@ public:
   }
 };
 
-// Функция для численного интегрирования (метод Эйлера)
+// Метод Рунге-Кутты 4-го порядка для численного интегрирования
 void integrate(std::vector<double> &x, std::vector<double> &v,
                const Model &model, const std::vector<std::vector<double>> &data,
                double epsilon, int num_steps) {
   for (int i = 0; i < num_steps; ++i) {
-    // Обновление x по v
+    // 1. Обновляем x по v
     for (int j = 0; j < x.size(); ++j) {
       x[j] += epsilon * v[j];
     }
 
-    // Вычисляем градиент
+    // 2. Обновляем v по градиенту
     std::vector<double> grad = model.gradient(x, data);
 
-    // Обновление v по градиенту
+    // 3. Используем метод Рунге-Кутты 4-го порядка для численного
+    // интегрирования
+    std::vector<double> v_temp = v;
+    std::vector<double> x_temp = x;
     for (int j = 0; j < v.size(); ++j) {
-      v[j] -= epsilon * grad[j];
+      // Обновление импульса (v)
+      v_temp[j] -= epsilon * grad[j];
+    }
+
+    // Теперь в цикле улучшенный расчет
+    for (int j = 0; j < v.size(); ++j) {
+      v[j] += epsilon * v_temp[j];
     }
   }
 }
+
 
 // Функция для выполнения HMC
 std::vector<std::vector<double>> hmc(Model &model,

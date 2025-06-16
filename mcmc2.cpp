@@ -272,7 +272,7 @@ int main() {
   int dim = 3;              // Количество параметров
   int sampleSize = 200;     // Количество выборок
   int num_steps = 1000;     // Количество шагов интегрирования
-  double epsilon = 0.00001; // Шаг по времени
+  double epsilon = 0.0001;  // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;   // Нижняя граница параметров
   double upperBound = 5.0;  // Верхняя граница параметров

@@ -65,11 +65,11 @@ public:
   std::vector<double> function(const std::vector<double> &x) const {
     std::vector<double> result;
     // x1 + x2
-    result.push_back(x[0] + x[1]);
-    // x1 * x2
     result.push_back(x[0] * x[1]);
+    // x1 * x2
+    result.push_back(x[1] + x[2]);
     // x2 * x3
-    result.push_back(x[1] * x[2]);
+    result.push_back(x[2] * x[0]);
     return result;
   }
 

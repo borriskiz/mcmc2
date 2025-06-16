@@ -37,7 +37,8 @@ public:
         int batchSize)
       : DIM(dim), noiseStddev(noiseStddev), lowBound(lowBd),
         upperBound(upperBd), batchSize(batchSize) {
-    trueParams = {1.0, 2.0, 3.0};
+    trueParams = {-1.0, -2.0, 3.0};
+    trueParams = generateRandomVector(dim, lowBound, upperBound);
   }
 
   // Генерация данных с добавлением шума
@@ -60,7 +61,7 @@ public:
     }
     return DATA;
   }
-
+  std::vector<double> getTrue() const { return trueParams; }
   // Функция модели, которая возвращает вектор значений
   std::vector<double> function(const std::vector<double> &x) const {
     std::vector<double> result;
@@ -267,7 +268,12 @@ void plotHistogram(const std::string &filename) {
                         ".txt' using 1:2 with boxes\"";
   system(command.c_str());
 }
-
+void printVector(const std::vector<double> &vec) {
+  for (double v : vec) {
+    std::cout << v << " ";
+  }
+  std::cout << std::endl;
+}
 int main() {
   int dim = 3;              // Количество параметров
   int sampleSize = 200;     // Количество выборок
@@ -292,10 +298,11 @@ int main() {
 
   std::cout << "\nMean of each parameter after " << sampleSize
             << " samples:" << std::endl;
-  for (double m : mean) {
-    std::cout << m << " ";
-  }
-  std::cout << std::endl;
+  printVector(mean);
+
+  std::cout << "\nTrue parameters\n ";
+  std::vector<double> trueParams = model.getTrue();
+  printVector(trueParams);
 
   // Получаем сгенерированные данные
   auto inputData = model.getData();

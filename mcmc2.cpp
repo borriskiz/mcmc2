@@ -269,7 +269,7 @@ void plotHistogram(const std::string &filename) {
 int main() {
   int dim = 3;              // Количество параметров
   int sampleSize = 200;     // Количество выборок
-  int num_steps = 100;      // Количество шагов интегрирования
+  int num_steps = 1000;      // Количество шагов интегрирования
   double epsilon = 0.0001;  // Шаг по времени
   double noiseStddev = 0.1; // Стандартное отклонение шума
   double lowBound = -5.0;   // Нижняя граница параметров

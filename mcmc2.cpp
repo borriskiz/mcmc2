@@ -39,22 +39,25 @@ public:
   }
 
   std::vector<std::vector<double>> getData() {
-    if (DATA.empty()) {
-      std::random_device rd;
-      std::mt19937 gen(rd());
-      std::normal_distribution<> noise(0.0, noiseStddev);
-
-      std::vector<std::vector<double>> data;
-      std::vector<double> function_value = function(trueParams);
-      for (int i = 0; i < batchSize; ++i) {
-        std::vector<double> noisy_data;
-        for (int j = 0; j < function_value.size(); ++j) {
-          noisy_data.push_back(function_value[j] + noise(gen));
-        }
-        data.push_back(noisy_data);
-      }
-      DATA = data;
+    if (!DATA.empty()) {
+      return DATA;
     }
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution<> noise(0.0, noiseStddev);
+
+    std::vector<std::vector<double>> data;
+    std::vector<double> function_value = function(trueParams);
+    std::vector<double> noisy_data;
+    int size = function_value.size();
+    for (int i = 0; i < batchSize; ++i) {
+      noisy_data.clear();
+      for (int j = 0; j < size; ++j) {
+        noisy_data.push_back(function_value[j] + noise(gen));
+      }
+      data.push_back(noisy_data);
+    }
+    DATA = data;
     return DATA;
   }
 
@@ -72,11 +75,13 @@ public:
            const std::vector<double> &data) const {
     double sum = 0.0;
     std::vector<double> predicted = function(x);
-    for (int j = 0; j < data.size(); ++j) {
-      double diff = data[j] - predicted[j];
-      sum += (diff * diff) / (2.0 * noiseStddev * noiseStddev);
+    double diff;
+    int size = data.size();
+    for (int i = 0; i < size; ++i) {
+      diff = data[i] - predicted[i];
+      sum += (diff * diff);
     }
-    return sum;
+    return sum / (2.0 * noiseStddev * noiseStddev);
   }
 
   double Hamiltonian(const std::vector<double> &x, const std::vector<double> &v,
@@ -105,8 +110,10 @@ public:
     std::vector<double> grad(DIM, 0.0);
     std::vector<double> predicted = function(x);
     double noiseStddev2 = noiseStddev * noiseStddev;
-    for (int j = 0; j < data.size(); ++j) {
-      double diff = data[j] - predicted[j];
+    double diff;
+    int size = data.size();
+    for (int j = 0; j < size; ++j) {
+      diff = data[j] - predicted[j];
       grad[j] += -diff / noiseStddev2;
     }
     return grad;
@@ -117,8 +124,10 @@ void integrate(std::vector<double> &x, std::vector<double> &v,
                const Model &model, const std::vector<double> &data,
                double epsilon, int num_steps) {
   std::vector<double> grad, v_temp, x_temp;
+  int xSize = x.size();
+  int vSize = v.size();
   for (int i = 0; i < num_steps; ++i) {
-    for (int j = 0; j < x.size(); ++j) {
+    for (int j = 0; j < xSize; ++j) {
       x[j] += epsilon * v[j];
     }
 
@@ -126,11 +135,11 @@ void integrate(std::vector<double> &x, std::vector<double> &v,
 
     v_temp = v;
     x_temp = x;
-    for (int j = 0; j < v.size(); ++j) {
+    for (int j = 0; j < vSize; ++j) {
       v_temp[j] -= epsilon * grad[j];
     }
 
-    for (int j = 0; j < v.size(); ++j) {
+    for (int j = 0; j < vSize; ++j) {
       v[j] += epsilon * v_temp[j];
     }
   }
@@ -144,7 +153,7 @@ std::vector<std::vector<double>> hmc(Model &model,
   std::vector<std::vector<double>> samples;
   std::vector<double> v, x_new, v_new;
   std::vector<std::vector<double>> data = model.getData();
-
+  double H_old, H_new, alpha, u;
   for (int n = 0; n < num_samples; ++n) {
     if (n % (num_samples / 10) == 0) {
       std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
@@ -156,14 +165,14 @@ std::vector<std::vector<double>> hmc(Model &model,
 
     integrate(x_new, v_new, model, data[0], epsilon, num_steps);
 
-    double H_old = model.Hamiltonian(x, v, data[0]);
-    double H_new = model.Hamiltonian(x_new, v_new, data[0]);
+    H_old = model.Hamiltonian(x, v, data[0]);
+    H_new = model.Hamiltonian(x_new, v_new, data[0]);
 
-    double alpha = std::min(1.0, exp(H_old - H_new));
+    alpha = std::min(1.0, exp(H_old - H_new));
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(0.0, 1.0);
-    double u = dis(gen);
+    u = dis(gen);
 
     if (u < alpha) {
       x = x_new;

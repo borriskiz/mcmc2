@@ -138,6 +138,9 @@ public:
 void integrate(std::vector<double> &x, std::vector<double> &v,
                const Model &model, const std::vector<std::vector<double>> &data,
                double epsilon, int num_steps) {
+  std::vector<double> v_temp;
+  std::vector<double> x_temp;
+  std::vector<double> grad;
   for (int i = 0; i < num_steps; ++i) {
     // 1. Обновляем x по v
     for (int j = 0; j < x.size(); ++j) {
@@ -145,12 +148,12 @@ void integrate(std::vector<double> &x, std::vector<double> &v,
     }
 
     // 2. Обновляем v по градиенту
-    std::vector<double> grad = model.gradient(x, data);
+    grad = model.gradient(x, data);
 
     // 3. Используем метод Рунге-Кутты 4-го порядка для численного
     // интегрирования
-    std::vector<double> v_temp = v;
-    std::vector<double> x_temp = x;
+    v_temp = v;
+    x_temp = x;
     for (int j = 0; j < v.size(); ++j) {
       // Обновление импульса (v)
       v_temp[j] -= epsilon * grad[j];
@@ -170,7 +173,9 @@ std::vector<std::vector<double>> hmc(Model &model,
                                      int num_steps) {
   std::vector<double> x = initial_x;
   std::vector<std::vector<double>> samples;
-
+  std::vector<double> v;
+  std::vector<double> x_new;
+  std::vector<double> v_new;
   // Генерация данных (batch)
   std::vector<std::vector<double>> data = model.getData();
 
@@ -180,11 +185,11 @@ std::vector<std::vector<double>> hmc(Model &model,
     }
 
     // 1. Генерация случайного импульса
-    std::vector<double> v = model.generateRandomMomentum();
+    v = model.generateRandomMomentum();
 
     // 2. Чтение начальных условий для HMC
-    std::vector<double> x_new = x;
-    std::vector<double> v_new = v;
+    x_new = x;
+    v_new = v;
 
     // 3. Численное интегрирование
     integrate(x_new, v_new, model, data, epsilon, num_steps);

@@ -154,6 +154,7 @@ std::vector<std::vector<double>> hmc(Model &model,
   std::vector<double> v, x_new, v_new;
   std::vector<std::vector<double>> data = model.getData();
   double H_old, H_new, alpha, u;
+  int accepted = 0;
   for (int n = 0; n < num_samples; ++n) {
     if (n % (num_samples / 10) == 0) {
       std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
@@ -176,11 +177,15 @@ std::vector<std::vector<double>> hmc(Model &model,
 
     if (u < alpha) {
       x = x_new;
+      accepted++;
     }
 
     samples.push_back(x);
   }
-
+  // Диагностика: процент принятия
+  double acceptance_rate = static_cast<double>(accepted) / num_samples;
+  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%"
+            << std::endl;
   return samples;
 }
 
@@ -241,15 +246,33 @@ void plotHistogram(const std::string &filename) {
                         ".txt' using 1:2 with boxes\"";
   system(command.c_str());
 }
+// Функция для записи трассировки для каждого параметра в отдельный файл
+void saveTracePlot(const std::vector<std::vector<double>> &samples,
+                   int param_idx) {
+  std::ofstream outFile("trace_plot_x" + std::to_string(param_idx + 1) +
+                        ".txt");
+  for (const auto &sample : samples) {
+    outFile << sample[param_idx] << "\n"; // Записываем только значения для x_i
+  }
+  outFile.close();
+
+  // Строим график трассировки с помощью gnuplot
+  std::string command =
+      "gnuplot -e \"set terminal png; set output 'trace_plot_x" +
+      std::to_string(param_idx + 1) + ".png'; plot 'trace_plot_x" +
+      std::to_string(param_idx + 1) + ".txt' with lines title 'x" +
+      std::to_string(param_idx + 1) + "\"";
+  system(command.c_str());
+}
 int main() {
   int dim = 3;
   int sampleSize = 20000;
   int num_steps = 1000;
-  double epsilon = 0.0001;
+  double epsilon = 0.00001;
   double noiseStddev = 0.1;
   double lowBound = -5.0;
   double upperBound = 5.0;
-  int batchSize = 2000;
+  int batchSize = 20000;
 
   Model model(dim, noiseStddev, lowBound, upperBound, batchSize);
 
@@ -291,6 +314,9 @@ int main() {
 
     // Строим гистограмму с использованием gnuplot
     plotHistogram(filename);
+
+    // Трассировка параметров
+    saveTracePlot(samples, i);
   }
 
   return 0;

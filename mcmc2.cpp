@@ -491,7 +491,7 @@ int main() {
     auto histogram = computeHistogram(column_data, num_bins);
 
     // Сохраняем гистограмму для каждого столбца
-    std::string filename = "inputData_column_" + std::to_string(i);
+    std::string filename = "inputData_x" + std::to_string(i + 1);
     saveHistogramToFile(histogram, filename, sampleSize);
 
     // Строим гистограмму с использованием gnuplot

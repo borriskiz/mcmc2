@@ -420,7 +420,8 @@ std::vector<std::vector<double>> nuts(Model &model,
     samples.push_back(x);
   }
 
-  double acceptance_rate = static_cast<double>(accepted) / num_samples;
+  double acceptance_rate =
+      static_cast<double>(accepted) / num_samples / max_depth;
   std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%"
             << std::endl;
   return samples;

@@ -316,11 +316,49 @@ void plotAutocorrelation(int param_idx) {
       std::to_string(param_idx + 1) + "\"";
   system(command.c_str());
 }
+std::vector<std::vector<double>> filterChainByACF(
+    const std::vector<std::vector<double>> &samples,
+    double acf_threshold = 0.1, // Порог автокорреляции для фильтрации
+    int acf_lag = 100,          // Максимальный лаг для автокорреляции
+    int skip_rate = 100 // Сколько точек пропускать для оценки автокорреляции
+) {
+  std::vector<std::vector<double>> filtered_samples;
+  std::vector<std::vector<double>> chain(samples.begin(), samples.end());
 
+  // Применяем фильтрацию для каждого параметра
+  for (int param_idx = 0; param_idx < samples[0].size(); ++param_idx) {
+    std::vector<double> param_chain;
+    for (const auto &sample : samples) {
+      param_chain.push_back(sample[param_idx]);
+    }
+
+    // Вычисление автокорреляции
+    std::vector<double> acors = autocorrelation(param_chain, acf_lag);
+
+    // Ищем момент, когда автокорреляция стабилизируется
+    bool stop_filtering = false;
+    int start_index = 0;
+    for (int i = 0; i < acors.size(); ++i) {
+      if (abs(acors[i]) < acf_threshold) {
+        start_index = i;
+        stop_filtering = true;
+        break;
+      }
+    }
+
+    // Применяем фильтрацию, начиная с момента, когда автокорреляция стала
+    // меньше порога
+    for (int i = start_index; i < samples.size(); i += skip_rate) {
+      filtered_samples.push_back(samples[i]);
+    }
+  }
+
+  return filtered_samples;
+}
 int main() {
   int dim = 3;
   int sampleSize = 20000;
-  int num_steps = 1000;
+  int num_steps = 10000;
   double epsilon = 0.00001;
   double noiseStddev = 0.1;
   double lowBound = -5.0;
@@ -335,9 +373,11 @@ int main() {
   // Запуск HMC
   std::vector<std::vector<double>> samples =
       hmc(model, initial_x, sampleSize, epsilon, num_steps);
+  std::vector<std::vector<double>> filtered_samples =
+      filterChainByACF(samples, 0.3, 1000, 100);
 
   // Вычисление среднего по каждому параметру
-  std::vector<double> mean = computeMean(samples);
+  std::vector<double> mean = computeMean(filtered_samples);
 
   std::cout << "\nMean of each parameter after " << sampleSize
             << " samples:" << std::endl;
@@ -369,11 +409,11 @@ int main() {
     plotHistogram(filename);
 
     // Трассировка параметров
-    saveTracePlot(samples, i);
+    saveTracePlot(filtered_samples, i);
   }
   for (int i = 0; i < dim; ++i) {
     std::vector<double> param_chain;
-    for (const auto &sample : samples) {
+    for (const auto &sample : filtered_samples) {
       param_chain.push_back(sample[i]);
     }
 

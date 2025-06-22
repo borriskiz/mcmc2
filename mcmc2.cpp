@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -185,8 +186,7 @@ std::vector<std::vector<double>> hmc(Model &model,
   }
   // Диагностика: процент принятия
   double acceptance_rate = static_cast<double>(accepted) / num_samples;
-  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%"
-            << std::endl;
+  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%\n";
   return samples;
 }
 
@@ -208,7 +208,7 @@ void printVector(const std::vector<double> &vec) {
   for (double v : vec) {
     std::cout << v << " ";
   }
-  std::cout << std::endl;
+  std::cout << "\n";
 }
 std::map<double, int> computeHistogram(const std::vector<double> &data,
                                        int num_bins) {
@@ -422,8 +422,7 @@ std::vector<std::vector<double>> nuts(Model &model,
 
   double acceptance_rate =
       static_cast<double>(accepted) / num_samples / max_depth;
-  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%"
-            << std::endl;
+  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%\n";
   return samples;
 }
 int main() {
@@ -449,6 +448,8 @@ int main() {
 
   std::vector<std::vector<double>> samples;
 
+  auto start = std::chrono::high_resolution_clock::now();
+
   if (method_choice == 'h') {
     std::cout << "Sampling with HMC.\n";
 
@@ -461,6 +462,11 @@ int main() {
     std::cout << "Invalid choice, defaulting to HMC.\n";
     samples = hmc(model, initial_x, sampleSize, epsilon, num_steps);
   }
+  auto end = std::chrono::high_resolution_clock::now();
+
+  // Вычисляем разницу времени
+  std::chrono::duration<double> duration = end - start;
+  std::cout << "Time taken: " << duration.count() << " seconds\n";
 
   std::vector<std::vector<double>> filtered_samples =
       filterChainByACF(samples, 0.3, 1000, 100);
@@ -468,8 +474,7 @@ int main() {
   // Вычисление среднего по каждому параметру
   std::vector<double> mean = computeMean(filtered_samples);
 
-  std::cout << "\nMean of each parameter after " << sampleSize
-            << " samples:" << std::endl;
+  std::cout << "\nMean of each parameter after " << sampleSize << " samples:\n";
   printVector(mean);
 
   std::cout << "\nTrue parameters\n ";

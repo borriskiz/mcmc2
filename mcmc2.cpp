@@ -35,7 +35,8 @@ public:
         int batchSize)
       : DIM(dim), noiseStddev(noiseStddev), lowBound(lowBd),
         upperBound(upperBd), batchSize(batchSize) {
-    trueParams = generateRandomVector(dim, lowBound, upperBound);
+    // trueParams = generateRandomVector(dim, lowBound, upperBound);
+    trueParams = {1.0, 2.0, 3.0};
   }
 
   std::vector<std::vector<double>> getData() {
@@ -355,6 +356,7 @@ std::vector<std::vector<double>> filterChainByACF(
 
   return filtered_samples;
 }
+
 int main() {
   int dim = 3;
   int sampleSize = 20000;

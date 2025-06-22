@@ -35,8 +35,8 @@ public:
         int batchSize)
       : DIM(dim), noiseStddev(noiseStddev), lowBound(lowBd),
         upperBound(upperBd), batchSize(batchSize) {
-    // trueParams = generateRandomVector(dim, lowBound, upperBound);
     trueParams = {1.0, 2.0, 3.0};
+    trueParams = generateRandomVector(dim, lowBound, upperBound);
   }
 
   std::vector<std::vector<double>> getData() {

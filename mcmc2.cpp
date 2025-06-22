@@ -356,7 +356,75 @@ std::vector<std::vector<double>> filterChainByACF(
 
   return filtered_samples;
 }
+std::vector<std::vector<double>> nuts(Model &model,
+                                      const std::vector<double> &initial_x,
+                                      int num_samples, double epsilon,
+                                      int max_depth) {
+  std::vector<double> x = initial_x;
+  std::vector<std::vector<double>> samples;
+  std::vector<double> v, x_new, v_new;
+  std::vector<std::vector<double>> data = model.getData();
+  double H_new, alpha, u;
+  int accepted = 0;
 
+  // Для отслеживания траектории
+  std::vector<std::vector<std::vector<double>>> trajectory;
+
+  for (int n = 0; n < num_samples; ++n) {
+    if (n % (num_samples / 10) == 0) {
+      std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
+    }
+
+    // Сгенерируем случайный импульс
+    v = model.generateRandomMomentum();
+    x_new = x;
+    v_new = v;
+
+    trajectory.clear(); // очищаем траекторию перед каждым новым шагом
+
+    // Рекурсивно интегрируем (аналогично NUTS)
+    double epsilon_temp = epsilon;
+    int depth = 1;
+    double lambda = 10.0;
+
+    trajectory.push_back({x_new, v_new});
+    double initial_H = model.Hamiltonian(x, v, data[0]);
+
+    // Моделируем "двойной" взрыв по траектории
+    for (int depth_iter = 0; depth_iter < max_depth; ++depth_iter) {
+      integrate(x_new, v_new, model, data[0], epsilon_temp, 1);
+
+      trajectory.push_back({x_new, v_new});
+
+      H_new = model.Hamiltonian(x_new, v_new, data[0]);
+
+      alpha = std::min(1.0, exp(initial_H - H_new));
+
+      std::random_device rd;
+      std::mt19937 gen(rd());
+      std::uniform_real_distribution<> dis(0.0, 1.0);
+      u = dis(gen);
+
+      if (u < alpha) {
+        x = x_new; // Обновление состояния
+        accepted++;
+      }
+
+      if (depth_iter == max_depth - 1) {
+        break;
+      }
+
+      epsilon_temp *= lambda; // адаптивный шаг
+    }
+
+    samples.push_back(x);
+  }
+
+  double acceptance_rate = static_cast<double>(accepted) / num_samples;
+  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%"
+            << std::endl;
+  return samples;
+}
 int main() {
   int dim = 3;
   int sampleSize = 20000;
@@ -367,14 +435,32 @@ int main() {
   double upperBound = 5.0;
   int batchSize = 20000;
 
+  int max_depth = 10;
   Model model(dim, noiseStddev, lowBound, upperBound, batchSize);
 
   // Инициализация начального вектора
   std::vector<double> initial_x = std::vector<double>(dim, 0.0);
 
   // Запуск HMC
-  std::vector<std::vector<double>> samples =
-      hmc(model, initial_x, sampleSize, epsilon, num_steps);
+  char method_choice;
+  std::cout << "Choose the method: HMC (h) or NUTS (n): ";
+  std::cin >> method_choice;
+
+  std::vector<std::vector<double>> samples;
+
+  if (method_choice == 'h') {
+    std::cout << "Sampling with HMC.\n";
+
+    samples = hmc(model, initial_x, sampleSize, epsilon, num_steps);
+  } else if (method_choice == 'n') {
+    std::cout << "Sampling with NUTS.\n";
+
+    samples = nuts(model, initial_x, sampleSize, epsilon, max_depth);
+  } else {
+    std::cout << "Invalid choice, defaulting to HMC.\n";
+    samples = hmc(model, initial_x, sampleSize, epsilon, num_steps);
+  }
+
   std::vector<std::vector<double>> filtered_samples =
       filterChainByACF(samples, 0.3, 1000, 100);
 

@@ -487,20 +487,29 @@ int main() {
 
   // Генерация и сохранение гистограмм для каждого столбца
   for (int i = 0; i < inputData[0].size(); ++i) {
-    std::vector<double> column_data;
+    std::vector<double> column_data_input;
+    std::vector<double> column_data_output;
     for (const auto &row : inputData) {
-      column_data.push_back(row[i]);
+      column_data_input.push_back(row[i]);
     }
-
+    for (const auto &row : filtered_samples) {
+      column_data_output.push_back(row[i]);
+    }
     // Вычисление гистограммы
-    auto histogram = computeHistogram(column_data, num_bins);
+    auto histogramInput = computeHistogram(column_data_input, num_bins);
+    auto histogramOutput = computeHistogram(column_data_output, num_bins);
 
     // Сохраняем гистограмму для каждого столбца
-    std::string filename = "inputData_x" + std::to_string(i + 1);
-    saveHistogramToFile(histogram, filename, sampleSize);
+    std::string filenameInput = "inputData_x" + std::to_string(i + 1);
+    std::string filenameOutput = "posterior_x" + std::to_string(i + 1);
+
+    saveHistogramToFile(histogramInput, filenameInput, sampleSize);
+    saveHistogramToFile(histogramOutput, filenameOutput,
+                        filtered_samples.size());
 
     // Строим гистограмму с использованием gnuplot
-    plotHistogram(filename);
+    plotHistogram(filenameInput);
+    plotHistogram(filenameOutput);
 
     // Трассировка параметров
     saveTracePlot(filtered_samples, i);

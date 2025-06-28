@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
-#include <functional>
 #include <iostream>
 #include <map>
 #include <random>
@@ -110,17 +109,22 @@ public:
   }
 
   std::vector<double> gradient(const std::vector<double> &x,
-                               const std::vector<double> &data) const {
-    std::vector<double> grad(DIM, 0.0);
-    std::vector<double> predicted = function(x);
-    double noiseStddev2 = noiseStddev * noiseStddev;
-    double diff;
-    int size = data.size();
-    for (int j = 0; j < size; ++j) {
-      diff = data[j] - predicted[j];
-      grad[j] += -diff / noiseStddev2;
-    }
-    return grad;
+                               const std::vector<double> &y) const {
+    const double var = noiseStddev * noiseStddev;
+    const double f0 = x[0] * x[1];
+    const double f1 = x[1] + x[2];
+    const double f2 = x[2] * x[0];
+
+    // ∂/∂x0: 2*(f0-y0)*x1 + 2*(f2-y2)*x2
+    // ∂/∂x1: 2*(f0-y0)*x0 + 2*(f1-y1)
+    // ∂/∂x2: 2*(f1-y1)      + 2*(f2-y2)*x0
+    std::vector<double> g(3);
+    g[0] = (f0 - y[0]) * x[1] + (f2 - y[2]) * x[2];
+    g[1] = (f0 - y[0]) * x[0] + (f1 - y[1]);
+    g[2] = (f1 - y[1]) + (f2 - y[2]) * x[0];
+    for (auto &gi : g)
+      gi /= var;
+    return g;
   }
 };
 
@@ -316,48 +320,86 @@ static inline void integrate(std::vector<double> &x, std::vector<double> &v,
     }
   }
 }
+static inline void leapfrogHMC(const Model &model, std::vector<double> &q,
+                               std::vector<double> &p, double eps,
+                               const std::vector<double> &data, int L) {
+  // half‑step для импульса
+  std::vector<double> g = model.gradient(q, data);
+  for (size_t i = 0; i < p.size(); ++i)
+    p[i] -= 0.5 * eps * g[i];
 
+  for (int step = 0; step < L; ++step) {
+    // full‑step для координат
+    for (size_t i = 0; i < q.size(); ++i)
+      q[i] += eps * p[i];
+
+    // (последний шаг пропускает ещё один half‑kick)
+    if (step != L - 1) {
+      g = model.gradient(q, data);
+      for (size_t i = 0; i < p.size(); ++i)
+        p[i] -= eps * g[i];
+    }
+  }
+  // финальный half‑kick
+  g = model.gradient(q, data);
+  for (size_t i = 0; i < p.size(); ++i)
+    p[i] -= 0.5 * eps * g[i];
+
+  // меняем знак импульсов (симплектовый симметричный интегратор)
+  for (size_t i = 0; i < p.size(); ++i)
+    p[i] = -p[i];
+}
+
+// --------------------------- CLASSIC HMC -----------------------------------
 static inline std::vector<std::vector<double>>
-hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
-    double epsilon, int num_steps) {
-  std::vector<double> x = initial_x;
+hmc(Model &model, const std::vector<double> &q0, int num_samples, double eps,
+    int L, bool verbose = true) {
   std::vector<std::vector<double>> samples;
-  std::vector<double> v, x_new, v_new;
-  std::vector<std::vector<double>> data = model.getData();
-  double H_old, H_new, alpha, u;
-  int accepted = 0;
+  samples.reserve(num_samples);
+
+  std::vector<double> q = q0;
+  size_t accepted = 0;
+
+  // Используем первое наблюдение для правдоподобия (как в вашем коде)
+  const std::vector<double> data = model.getData()[0];
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> unif(0.0, 1.0);
+
   for (int n = 0; n < num_samples; ++n) {
-    if (n % (num_samples / 10) == 0) {
+    if (verbose && n % std::max(1, num_samples / 10) == 0) {
       std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
     }
 
-    v = model.generateRandomMomentum();
-    x_new = x;
-    v_new = v;
+    // 1) Сэмплируем импульс p ~ N(0, I)
+    std::vector<double> p = model.generateRandomMomentum();
+    std::vector<double> q_prop = q; // копия координат
+    std::vector<double> p_prop = p; // копия импульсов
 
-    integrate(x_new, v_new, model, data[0], epsilon, num_steps);
+    // 2) Интегрируем систему
+    leapfrogHMC(model, q_prop, p_prop, eps, data, L);
 
-    H_old = model.Hamiltonian(x, v, data[0]);
-    H_new = model.Hamiltonian(x_new, v_new, data[0]);
+    // 3) Метрополис‑приёмка
+    double H_current = model.Hamiltonian(q, p, data);
+    double H_proposal = model.Hamiltonian(q_prop, p_prop, data);
+    double log_alpha = H_current - H_proposal; // в лог‑пространстве
 
-    alpha = std::min(1.0, exp(H_old - H_new));
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(0.0, 1.0);
-    u = dis(gen);
-
-    if (u < alpha) {
-      x = x_new;
-      accepted++;
+    if (std::log(unif(gen)) < log_alpha) {
+      q = q_prop;
+      ++accepted;
     }
-
-    samples.push_back(x);
+    samples.push_back(q);
   }
-  // Диагностика: процент принятия
-  double acceptance_rate = static_cast<double>(accepted) / num_samples;
-  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%\n";
+
+  if (verbose) {
+    std::cout << "[Classic HMC] acceptance rate: "
+              << static_cast<double>(accepted) / num_samples * 100.0 << "%\n";
+  }
+
   return samples;
 }
+
 static inline double dot(const std::vector<double> &a,
                          const std::vector<double> &b) {
   double s = 0.0;
@@ -572,8 +614,8 @@ nuts(Model &model, const std::vector<double> &initial_x, int num_samples,
 int main() {
   int dim = 3;
   int sampleSize = 20000;
-  int num_steps = 10000;
-  double epsilon = 0.00001;
+  int L = 25;
+  double epsilon = 0.001;
   double noiseStddev = 0.1;
   double lowBound = -5.0;
   double upperBound = 5.0;
@@ -597,14 +639,14 @@ int main() {
   if (method_choice == 'h') {
     std::cout << "Sampling with HMC.\n";
 
-    samples = hmc(model, initial_x, sampleSize, epsilon, num_steps);
+    samples = hmc(model, initial_x, sampleSize, epsilon, L);
   } else if (method_choice == 'n') {
     std::cout << "Sampling with NUTS.\n";
 
     samples = nuts(model, initial_x, sampleSize, epsilon, max_depth);
   } else {
     std::cout << "Invalid choice, defaulting to HMC.\n";
-    samples = hmc(model, initial_x, sampleSize, epsilon, num_steps);
+    samples = hmc(model, initial_x, sampleSize, epsilon, L);
   }
   auto end = std::chrono::high_resolution_clock::now();
 
@@ -613,7 +655,7 @@ int main() {
   std::cout << "Time taken: " << duration.count() << " seconds\n";
 
   std::vector<std::vector<double>> filtered_samples =
-      filterChainByACF(samples, 0.3, 1000, 100);
+      filterChainByACF(samples, 1, 1000, 100);
 
   // Вычисление среднего по каждому параметру
   std::vector<double> mean = computeMean(filtered_samples);

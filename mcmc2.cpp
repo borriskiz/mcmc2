@@ -288,8 +288,6 @@ static inline std::vector<std::vector<double>> filterChainByACF(
       }
     }
 
-    // Применяем фильтрацию, начиная с момента, когда автокорреляция стала
-    // меньше порога
     for (int i = start_index; i < samples.size(); i += skip_rate) {
       filtered_samples.push_back(samples[i]);
     }
@@ -352,7 +350,6 @@ static inline void leapfrogHMC(const Model &model, std::vector<double> &q,
     p[i] = -p[i];
 }
 
-// --------------------------- CLASSIC HMC -----------------------------------
 static inline std::vector<std::vector<double>>
 hmc(Model &model, const std::vector<double> &q0, int num_samples, double eps,
     int L, bool verbose = true) {
@@ -362,7 +359,6 @@ hmc(Model &model, const std::vector<double> &q0, int num_samples, double eps,
   std::vector<double> q = q0;
   size_t accepted = 0;
 
-  // Используем первое наблюдение для правдоподобия (как в вашем коде)
   const std::vector<double> data = model.getData()[0];
 
   std::random_device rd;
@@ -661,8 +657,9 @@ int main() {
 
   // Вычисление среднего по каждому параметру
   std::vector<double> mean = computeMean(filtered_samples);
-
-  std::cout << "\nMean of each parameter after " << sampleSize << " samples:\n";
+  size_t filtered_samples_size = filtered_samples.size();
+  std::cout << "\nMean of each parameter after " << filtered_samples_size
+            << " samples:\n";
   printVector(mean);
 
   std::cout << "\nTrue parameters\n ";

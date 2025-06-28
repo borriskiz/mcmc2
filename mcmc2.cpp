@@ -358,6 +358,7 @@ std::vector<std::vector<double>> filterChainByACF(
 
   return filtered_samples;
 }
+
 inline double dot(const std::vector<double> &a, const std::vector<double> &b) {
   double s = 0.0;
   for (size_t i = 0; i < a.size(); ++i)
@@ -401,11 +402,11 @@ static bool stopCriterion(const std::vector<double> &x_minus,
 // Возвращаемый кортеж:
 //   x_minus, r_minus   – край траектории в минус‑направлении
 //   x_plus,  r_plus    – край траектории в плюс‑направлении
-//   x_proposal         – кандидат в выборку
+//   x_candidate        – кандидат в выборку
 //   n_valid            – число валидных точек в поддереве
 //   keep_sampling      – можно ли продолжать расширять дерево (true/false)
-//   sum_alpha          – суммарная α (для статистики)
-//   num_alpha          – число α (для статистики)
+//   sum_alpha          – суммарная alpha (для статистики)
+//   num_alpha          – число alpha (для статистики)
 //------------------------------------------------------------------------------
 static std::tuple<std::vector<double>, std::vector<double>, std::vector<double>,
                   std::vector<double>, std::vector<double>, size_t, bool,
@@ -429,8 +430,14 @@ buildTree(const Model &model, const std::vector<double> &x,
   }
 
   // Рекурсивно строим левое поддерево
-  auto [x_minus, r_minus, x_plus, r_plus, x_prop, n_valid, keep, sum_alpha,
-        num_alpha] =
+  std::vector<double> x_minus, r_minus, x_plus, r_plus, x_candidate;
+  size_t n_valid = 0;
+  bool keep = false;
+  double sum_alpha = 0.0;
+  size_t num_alpha = 0;
+
+  std::tie(x_minus, r_minus, x_plus, r_plus, x_candidate, n_valid, keep,
+           sum_alpha, num_alpha) =
       buildTree(model, x, r, log_u, direction, depth - 1, eps, data, gen);
 
   if (keep) {
@@ -460,7 +467,7 @@ buildTree(const Model &model, const std::vector<double> &x,
     if ((n_valid + n_valid2) > 0 &&
         dis(gen) < static_cast<double>(n_valid2) /
                        static_cast<double>(n_valid + n_valid2)) {
-      x_prop = x_prop2;
+      x_candidate = x_prop2;
     }
 
     n_valid += n_valid2;
@@ -469,13 +476,10 @@ buildTree(const Model &model, const std::vector<double> &x,
     num_alpha += num_alpha2;
   }
 
-  return {x_minus, r_minus, x_plus,    r_plus,   x_prop,
+  return {x_minus, r_minus, x_plus,    r_plus,   x_candidate,
           n_valid, keep,    sum_alpha, num_alpha};
 }
 
-//------------------------------------------------------------------------------
-// Полноценная NUTS‑обёртка
-//------------------------------------------------------------------------------
 std::vector<std::vector<double>> nuts(Model &model,
                                       const std::vector<double> &initial_x,
                                       int num_samples, double eps,
@@ -483,14 +487,12 @@ std::vector<std::vector<double>> nuts(Model &model,
   std::vector<double> x = initial_x;
   std::vector<std::vector<double>> samples;
 
-  // Данные (используется одна «строчка», как у вас было)
   auto data_mat = model.getData();
   const std::vector<double> &data = data_mat[0];
 
   std::random_device rd;
   std::mt19937 gen(rd());
 
-  size_t accepted = 0;
   double alpha_sum_total = 0.0;
   size_t alpha_cnt_total = 0;
 
@@ -503,7 +505,6 @@ std::vector<std::vector<double>> nuts(Model &model,
     std::vector<double> r0 = model.generateRandomMomentum();
     double H0 = model.Hamiltonian(x, r0, data);
 
-    // slice variable u ~ Uniform(0, exp(-H0)) => log_u = ln u - H0
     std::uniform_real_distribution<> dis_u(0.0, 1.0);
     double log_u = std::log(dis_u(gen)) - H0;
 
@@ -537,7 +538,7 @@ std::vector<std::vector<double>> nuts(Model &model,
         r_plus = r_p2;
       }
 
-      // Обновляем глобальную α‑статистику
+      // Обновляем глобальную alpha‑статистику
       alpha_sum_total += alpha_sum;
       alpha_cnt_total += num_alpha;
 
@@ -558,11 +559,9 @@ std::vector<std::vector<double>> nuts(Model &model,
 
     x = x_prop;
     samples.push_back(x);
-    accepted++; // в NUTS всегда принимаем одно предложение
   }
 
-  std::cout << "Acceptance rate (NUTS always 1.0 by design): 100%\n";
-  std::cout << "Mean accept prob α: "
+  std::cout << "Mean accept prob alpha: "
             << (alpha_cnt_total
                     ? alpha_sum_total / static_cast<double>(alpha_cnt_total)
                     : 0.0)

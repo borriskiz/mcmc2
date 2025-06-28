@@ -109,21 +109,23 @@ public:
   }
 
   std::vector<double> gradient(const std::vector<double> &x,
-                               const std::vector<double> &y) const {
-    const double var = noiseStddev * noiseStddev;
-    const double f0 = x[0] * x[1];
-    const double f1 = x[1] + x[2];
-    const double f2 = x[2] * x[0];
+                               const std::vector<double> &y,
+                               double h = 1e-6) const {
+    const double U0 = U(x, y);
+    std::vector<double> g(DIM);
+    std::vector<double> x_shift = x;
 
-    // ∂/∂x0: 2*(f0-y0)*x1 + 2*(f2-y2)*x2
-    // ∂/∂x1: 2*(f0-y0)*x0 + 2*(f1-y1)
-    // ∂/∂x2: 2*(f1-y1)      + 2*(f2-y2)*x0
-    std::vector<double> g(3);
-    g[0] = (f0 - y[0]) * x[1] + (f2 - y[2]) * x[2];
-    g[1] = (f0 - y[0]) * x[0] + (f1 - y[1]);
-    g[2] = (f1 - y[1]) + (f2 - y[2]) * x[0];
-    for (auto &gi : g)
-      gi /= var;
+    for (int j = 0; j < DIM; ++j) {
+      x_shift[j] = x[j] + h;
+      double U_plus = U(x_shift, y);
+
+      x_shift[j] = x[j] - h;
+      double U_minus = U(x_shift, y);
+
+      g[j] = (U_plus - U_minus) / (2.0 * h);
+
+      x_shift[j] = x[j]; // вернуть координату
+    }
     return g;
   }
 };

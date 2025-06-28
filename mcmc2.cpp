@@ -320,81 +320,46 @@ static inline void integrate(std::vector<double> &x, std::vector<double> &v,
     }
   }
 }
-static inline void leapfrogHMC(const Model &model, std::vector<double> &q,
-                               std::vector<double> &p, double eps,
-                               const std::vector<double> &data, int L) {
-  // half‑step для импульса
-  std::vector<double> g = model.gradient(q, data);
-  for (size_t i = 0; i < p.size(); ++i)
-    p[i] -= 0.5 * eps * g[i];
-
-  for (int step = 0; step < L; ++step) {
-    // full‑step для координат
-    for (size_t i = 0; i < q.size(); ++i)
-      q[i] += eps * p[i];
-
-    // (последний шаг пропускает ещё один half‑kick)
-    if (step != L - 1) {
-      g = model.gradient(q, data);
-      for (size_t i = 0; i < p.size(); ++i)
-        p[i] -= eps * g[i];
-    }
-  }
-  // финальный half‑kick
-  g = model.gradient(q, data);
-  for (size_t i = 0; i < p.size(); ++i)
-    p[i] -= 0.5 * eps * g[i];
-
-  // меняем знак импульсов (симплектовый симметричный интегратор)
-  for (size_t i = 0; i < p.size(); ++i)
-    p[i] = -p[i];
-}
 
 static inline std::vector<std::vector<double>>
-hmc(Model &model, const std::vector<double> &q0, int num_samples, double eps,
-    int L, bool verbose = true) {
+hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
+    double epsilon, int num_steps) {
+  std::vector<double> x = initial_x;
   std::vector<std::vector<double>> samples;
-  samples.reserve(num_samples);
-
-  std::vector<double> q = q0;
-  size_t accepted = 0;
-
-  const std::vector<double> data = model.getData()[0];
-
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<> unif(0.0, 1.0);
-
+  std::vector<double> v, x_new, v_new;
+  std::vector<std::vector<double>> data = model.getData();
+  double H_old, H_new, alpha, u;
+  int accepted = 0;
   for (int n = 0; n < num_samples; ++n) {
-    if (verbose && n % std::max(1, num_samples / 10) == 0) {
+    if (n % (num_samples / 10) == 0) {
       std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
     }
 
-    // 1) Сэмплируем импульс p ~ N(0, I)
-    std::vector<double> p = model.generateRandomMomentum();
-    std::vector<double> q_prop = q; // копия координат
-    std::vector<double> p_prop = p; // копия импульсов
+    v = model.generateRandomMomentum();
+    x_new = x;
+    v_new = v;
 
-    // 2) Интегрируем систему
-    leapfrogHMC(model, q_prop, p_prop, eps, data, L);
+    integrate(x_new, v_new, model, data[0], epsilon, num_steps);
 
-    // 3) Метрополис‑приёмка
-    double H_current = model.Hamiltonian(q, p, data);
-    double H_proposal = model.Hamiltonian(q_prop, p_prop, data);
-    double log_alpha = H_current - H_proposal; // в лог‑пространстве
+    H_old = model.Hamiltonian(x, v, data[0]);
+    H_new = model.Hamiltonian(x_new, v_new, data[0]);
 
-    if (std::log(unif(gen)) < log_alpha) {
-      q = q_prop;
-      ++accepted;
+    alpha = std::min(1.0, exp(H_old - H_new));
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+    u = dis(gen);
+
+    if (u < alpha) {
+      x = x_new;
+      accepted++;
     }
-    samples.push_back(q);
-  }
 
-  if (verbose) {
-    std::cout << "[Classic HMC] acceptance rate: "
-              << static_cast<double>(accepted) / num_samples * 100.0 << "%\n";
+    samples.push_back(x);
   }
-
+  // Диагностика: процент принятия
+  double acceptance_rate = static_cast<double>(accepted) / num_samples;
+  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%\n";
   return samples;
 }
 

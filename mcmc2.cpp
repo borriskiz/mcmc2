@@ -584,7 +584,7 @@ int main() {
   double upperBound = 5.0;
   int batchSize = 20000;
 
-  int max_depth = 10;
+  int max_depth = 5;
   Model model(dim, noiseStddev, lowBound, upperBound, batchSize);
 
   // Инициализация начального вектора
@@ -618,7 +618,7 @@ int main() {
   std::cout << "Time taken: " << duration.count() << " seconds\n";
 
   std::vector<std::vector<double>> filtered_samples =
-      filterChainByACF(samples, 1, 1000, 100);
+      filterChainByACF(samples, 0.1, 1000, 100);
 
   // Вычисление среднего по каждому параметру
   std::vector<double> mean = computeMean(filtered_samples);

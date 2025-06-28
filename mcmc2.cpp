@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -7,6 +8,7 @@
 #include <map>
 #include <random>
 #include <string>
+#include <tuple>
 #include <vector>
 
 std::vector<double> generateRandomVector(int n, double lowerBd,
@@ -36,8 +38,8 @@ public:
         int batchSize)
       : DIM(dim), noiseStddev(noiseStddev), lowBound(lowBd),
         upperBound(upperBd), batchSize(batchSize) {
-    trueParams = {1.0, 2.0, 3.0};
     trueParams = generateRandomVector(dim, lowBound, upperBound);
+    trueParams = {1.0, 2.0, 3.0};
   }
 
   std::vector<std::vector<double>> getData() {
@@ -356,75 +358,219 @@ std::vector<std::vector<double>> filterChainByACF(
 
   return filtered_samples;
 }
+inline double dot(const std::vector<double> &a, const std::vector<double> &b) {
+  double s = 0.0;
+  for (size_t i = 0; i < a.size(); ++i)
+    s += a[i] * b[i];
+  return s;
+}
+
+// Leapfrog‑шаг (симплектовый интегратор)
+static void leapfrog(const Model &model, std::vector<double> &x,
+                     std::vector<double> &r, double eps,
+                     const std::vector<double> &data) {
+  // half‑step для импульса
+  auto g = model.gradient(x, data);
+  for (size_t i = 0; i < r.size(); ++i)
+    r[i] -= 0.5 * eps * g[i];
+
+  // full‑step для координат
+  for (size_t i = 0; i < x.size(); ++i)
+    x[i] += eps * r[i];
+
+  // ещё half‑step для импульса
+  g = model.gradient(x, data);
+  for (size_t i = 0; i < r.size(); ++i)
+    r[i] -= 0.5 * eps * g[i];
+}
+
+// Критерий разворота (No‑U‑turn)
+static bool stopCriterion(const std::vector<double> &x_minus,
+                          const std::vector<double> &x_plus,
+                          const std::vector<double> &r_minus,
+                          const std::vector<double> &r_plus) {
+  std::vector<double> dx(x_minus.size());
+  for (size_t i = 0; i < dx.size(); ++i)
+    dx[i] = x_plus[i] - x_minus[i];
+  return (dot(dx, r_minus) < 0.0) || (dot(dx, r_plus) < 0.0);
+}
+
+//------------------------------------------------------------------------------
+// Построение бинарного дерева (рекурсивно)
+//------------------------------------------------------------------------------
+// Возвращаемый кортеж:
+//   x_minus, r_minus   – край траектории в минус‑направлении
+//   x_plus,  r_plus    – край траектории в плюс‑направлении
+//   x_proposal         – кандидат в выборку
+//   n_valid            – число валидных точек в поддереве
+//   keep_sampling      – можно ли продолжать расширять дерево (true/false)
+//   sum_alpha          – суммарная α (для статистики)
+//   num_alpha          – число α (для статистики)
+//------------------------------------------------------------------------------
+static std::tuple<std::vector<double>, std::vector<double>, std::vector<double>,
+                  std::vector<double>, std::vector<double>, size_t, bool,
+                  double, size_t>
+buildTree(const Model &model, const std::vector<double> &x,
+          const std::vector<double> &r, double log_u, int direction, int depth,
+          double eps, const std::vector<double> &data, std::mt19937 &gen) {
+  if (depth == 0) {
+    // Базовый случай: один leapfrog‑шаг
+    std::vector<double> x1 = x;
+    std::vector<double> r1 = r;
+    leapfrog(model, x1, r1, direction * eps, data);
+
+    double H1 = model.Hamiltonian(x1, r1, data);
+    bool valid = (log_u < -H1);
+    bool diverge = (H1 + log_u) > 1000.0; // порог дивергенции
+    size_t n_valid = (valid && !diverge) ? 1 : 0;
+
+    double alpha = std::min(1.0, std::exp(model.Hamiltonian(x, r, data) - H1));
+    return {x1, r1, x1, r1, valid ? x1 : x, n_valid, !diverge, alpha, 1};
+  }
+
+  // Рекурсивно строим левое поддерево
+  auto [x_minus, r_minus, x_plus, r_plus, x_prop, n_valid, keep, sum_alpha,
+        num_alpha] =
+      buildTree(model, x, r, log_u, direction, depth - 1, eps, data, gen);
+
+  if (keep) {
+    // Строим правое поддерево
+    std::vector<double> x_m2, r_m2, x_p2, r_p2, x_prop2;
+    size_t n_valid2;
+    bool keep2;
+    double sum_alpha2;
+    size_t num_alpha2;
+
+    if (direction == -1) {
+      std::tie(x_m2, r_m2, x_p2, r_p2, x_prop2, n_valid2, keep2, sum_alpha2,
+               num_alpha2) = buildTree(model, x_minus, r_minus, log_u,
+                                       direction, depth - 1, eps, data, gen);
+      x_minus = x_m2;
+      r_minus = r_m2;
+    } else {
+      std::tie(x_m2, r_m2, x_p2, r_p2, x_prop2, n_valid2, keep2, sum_alpha2,
+               num_alpha2) = buildTree(model, x_plus, r_plus, log_u, direction,
+                                       depth - 1, eps, data, gen);
+      x_plus = x_p2;
+      r_plus = r_p2;
+    }
+
+    //  Выбираем предложение пропорционально размерам поддеревьев
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+    if ((n_valid + n_valid2) > 0 &&
+        dis(gen) < static_cast<double>(n_valid2) /
+                       static_cast<double>(n_valid + n_valid2)) {
+      x_prop = x_prop2;
+    }
+
+    n_valid += n_valid2;
+    keep = keep2 && !stopCriterion(x_minus, x_plus, r_minus, r_plus);
+    sum_alpha += sum_alpha2;
+    num_alpha += num_alpha2;
+  }
+
+  return {x_minus, r_minus, x_plus,    r_plus,   x_prop,
+          n_valid, keep,    sum_alpha, num_alpha};
+}
+
+//------------------------------------------------------------------------------
+// Полноценная NUTS‑обёртка
+//------------------------------------------------------------------------------
 std::vector<std::vector<double>> nuts(Model &model,
                                       const std::vector<double> &initial_x,
-                                      int num_samples, double epsilon,
-                                      int max_depth) {
+                                      int num_samples, double eps,
+                                      int max_depth = 10) {
   std::vector<double> x = initial_x;
   std::vector<std::vector<double>> samples;
-  std::vector<double> v, x_new, v_new;
-  std::vector<std::vector<double>> data = model.getData();
-  double H_new, alpha, u;
-  int accepted = 0;
 
-  // Для отслеживания траектории
-  std::vector<std::vector<std::vector<double>>> trajectory;
+  // Данные (используется одна «строчка», как у вас было)
+  auto data_mat = model.getData();
+  const std::vector<double> &data = data_mat[0];
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+
+  size_t accepted = 0;
+  double alpha_sum_total = 0.0;
+  size_t alpha_cnt_total = 0;
 
   for (int n = 0; n < num_samples; ++n) {
     if (n % (num_samples / 10) == 0) {
       std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
     }
 
-    // Сгенерируем случайный импульс
-    v = model.generateRandomMomentum();
-    x_new = x;
-    v_new = v;
+    // Случайный импульс
+    std::vector<double> r0 = model.generateRandomMomentum();
+    double H0 = model.Hamiltonian(x, r0, data);
 
-    trajectory.clear(); // очищаем траекторию перед каждым новым шагом
+    // slice variable u ~ Uniform(0, exp(-H0)) => log_u = ln u - H0
+    std::uniform_real_distribution<> dis_u(0.0, 1.0);
+    double log_u = std::log(dis_u(gen)) - H0;
 
-    // Рекурсивно интегрируем (аналогично NUTS)
-    double epsilon_temp = epsilon;
-    int depth = 1;
-    double lambda = 10.0;
+    // Инициализируем дерево
+    std::vector<double> x_minus = x, x_plus = x;
+    std::vector<double> r_minus = r0, r_plus = r0;
+    std::vector<double> x_prop = x;
+    size_t n_valid = 1;
+    bool keep_sampling = true;
 
-    trajectory.push_back({x_new, v_new});
-    double initial_H = model.Hamiltonian(x, v, data[0]);
+    for (int depth = 0; depth < max_depth && keep_sampling; ++depth) {
+      int direction = (dis_u(gen) < 0.5) ? -1 : 1;
 
-    // Моделируем "двойной" взрыв по траектории
-    for (int depth_iter = 0; depth_iter < max_depth; ++depth_iter) {
-      integrate(x_new, v_new, model, data[0], epsilon_temp, 1);
+      std::vector<double> x_m2, r_m2, x_p2, r_p2, x_prop2;
+      size_t n_valid2;
+      bool keep2;
+      double alpha_sum;
+      size_t num_alpha;
 
-      trajectory.push_back({x_new, v_new});
+      if (direction == -1) {
+        std::tie(x_m2, r_m2, x_p2, r_p2, x_prop2, n_valid2, keep2, alpha_sum,
+                 num_alpha) = buildTree(model, x_minus, r_minus, log_u,
+                                        direction, depth, eps, data, gen);
+        x_minus = x_m2;
+        r_minus = r_m2;
+      } else {
+        std::tie(x_m2, r_m2, x_p2, r_p2, x_prop2, n_valid2, keep2, alpha_sum,
+                 num_alpha) = buildTree(model, x_plus, r_plus, log_u, direction,
+                                        depth, eps, data, gen);
+        x_plus = x_p2;
+        r_plus = r_p2;
+      }
 
-      H_new = model.Hamiltonian(x_new, v_new, data[0]);
+      // Обновляем глобальную α‑статистику
+      alpha_sum_total += alpha_sum;
+      alpha_cnt_total += num_alpha;
 
-      alpha = std::min(1.0, exp(initial_H - H_new));
+      if (keep2 == false)
+        break; // divergence detected
 
-      std::random_device rd;
-      std::mt19937 gen(rd());
+      // Случайный выбор предложения из объединённого поддерева
       std::uniform_real_distribution<> dis(0.0, 1.0);
-      u = dis(gen);
-
-      if (u < alpha) {
-        x = x_new; // Обновление состояния
-        accepted++;
+      if ((n_valid + n_valid2) > 0 &&
+          dis(gen) < static_cast<double>(n_valid2) /
+                         static_cast<double>(n_valid + n_valid2)) {
+        x_prop = x_prop2;
       }
 
-      if (depth_iter == max_depth - 1) {
-        break;
-      }
-
-      epsilon_temp *= lambda; // адаптивный шаг
+      n_valid += n_valid2;
+      keep_sampling = !stopCriterion(x_minus, x_plus, r_minus, r_plus);
     }
 
+    x = x_prop;
     samples.push_back(x);
+    accepted++; // в NUTS всегда принимаем одно предложение
   }
 
-  double acceptance_rate =
-      static_cast<double>(accepted) / num_samples / max_depth;
-  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%\n";
+  std::cout << "Acceptance rate (NUTS always 1.0 by design): 100%\n";
+  std::cout << "Mean accept prob α: "
+            << (alpha_cnt_total
+                    ? alpha_sum_total / static_cast<double>(alpha_cnt_total)
+                    : 0.0)
+            << "\n";
+
   return samples;
 }
+
 int main() {
   int dim = 3;
   int sampleSize = 20000;

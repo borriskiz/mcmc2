@@ -11,8 +11,8 @@
 #include <tuple>
 #include <vector>
 
-std::vector<double> generateRandomVector(int n, double lowerBd,
-                                         double upperBd) {
+static inline std::vector<double> generateRandomVector(int n, double lowerBd,
+                                                       double upperBd) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(lowerBd, upperBd);
@@ -124,12 +124,13 @@ public:
   }
 };
 
-void integrate(std::vector<double> &x, std::vector<double> &v,
-               const Model &model, const std::vector<double> &data,
-               double epsilon, int num_steps) {
+static inline void integrate(std::vector<double> &x, std::vector<double> &v,
+                             const Model &model,
+                             const std::vector<double> &data, double epsilon,
+                             int num_steps) {
   std::vector<double> grad, v_temp, x_temp;
-  int xSize = x.size();
-  int vSize = v.size();
+  int xSize = static_cast<int>(x.size());
+  int vSize = static_cast<int>(v.size());
   for (int i = 0; i < num_steps; ++i) {
     for (int j = 0; j < xSize; ++j) {
       x[j] += epsilon * v[j];
@@ -149,10 +150,9 @@ void integrate(std::vector<double> &x, std::vector<double> &v,
   }
 }
 
-std::vector<std::vector<double>> hmc(Model &model,
-                                     const std::vector<double> &initial_x,
-                                     int num_samples, double epsilon,
-                                     int num_steps) {
+static inline std::vector<std::vector<double>>
+hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
+    double epsilon, int num_steps) {
   std::vector<double> x = initial_x;
   std::vector<std::vector<double>> samples;
   std::vector<double> v, x_new, v_new;
@@ -192,7 +192,7 @@ std::vector<std::vector<double>> hmc(Model &model,
   return samples;
 }
 
-std::vector<double>
+static inline std::vector<double>
 computeMean(const std::vector<std::vector<double>> &samples) {
   std::vector<double> mean(samples[0].size(), 0.0);
   for (const auto &sample : samples) {
@@ -206,14 +206,14 @@ computeMean(const std::vector<std::vector<double>> &samples) {
   return mean;
 }
 
-void printVector(const std::vector<double> &vec) {
+static inline void printVector(const std::vector<double> &vec) {
   for (double v : vec) {
     std::cout << v << " ";
   }
   std::cout << "\n";
 }
-std::map<double, int> computeHistogram(const std::vector<double> &data,
-                                       int num_bins) {
+static inline std::map<double, int>
+computeHistogram(const std::vector<double> &data, int num_bins) {
   std::map<double, int> histogram;
   double min_val = *std::min_element(data.begin(), data.end());
   double max_val = *std::max_element(data.begin(), data.end());
@@ -230,8 +230,9 @@ std::map<double, int> computeHistogram(const std::vector<double> &data,
 }
 
 // Функция для записи данных гистограммы в файл
-void saveHistogramToFile(const std::map<double, int> &histogram,
-                         const std::string &filename, int dataSize) {
+static inline void saveHistogramToFile(const std::map<double, int> &histogram,
+                                       const std::string &filename,
+                                       int dataSize) {
   std::ofstream outFile(filename + ".txt");
   double dSize = static_cast<double>(dataSize);
   for (const auto &elem : histogram) {
@@ -243,15 +244,15 @@ void saveHistogramToFile(const std::map<double, int> &histogram,
 }
 
 // Функция для построения гистограммы с использованием gnuplot
-void plotHistogram(const std::string &filename) {
+static inline void plotHistogram(const std::string &filename) {
   std::string command = "gnuplot -e \"set terminal png; set output '" +
                         filename + ".png'; plot '" + filename +
                         ".txt' using 1:2 with boxes\"";
   system(command.c_str());
 }
 // Функция для записи трассировки для каждого параметра в отдельный файл
-void saveTracePlot(const std::vector<std::vector<double>> &samples,
-                   int param_idx) {
+static void saveTracePlot(const std::vector<std::vector<double>> &samples,
+                          int param_idx) {
   std::ofstream outFile("trace_plot_x" + std::to_string(param_idx + 1) +
                         ".txt");
   for (const auto &sample : samples) {
@@ -267,8 +268,8 @@ void saveTracePlot(const std::vector<std::vector<double>> &samples,
       std::to_string(param_idx + 1) + "\"";
   system(command.c_str());
 }
-std::vector<double> autocorrelation(const std::vector<double> &chain,
-                                    int max_lag = 100) {
+static inline std::vector<double>
+autocorrelation(const std::vector<double> &chain, int max_lag = 100) {
   int n = chain.size();
   std::vector<double> acors(max_lag + 1, 0.0);
 
@@ -301,8 +302,8 @@ std::vector<double> autocorrelation(const std::vector<double> &chain,
   }
   return acors;
 }
-void saveAutocorrelationToFile(const std::vector<double> &acors,
-                               int param_idx) {
+static inline void saveAutocorrelationToFile(const std::vector<double> &acors,
+                                             int param_idx) {
   std::ofstream outFile("autocorrelation_param_" +
                         std::to_string(param_idx + 1) + ".txt");
   for (int i = 0; i < acors.size(); ++i) {
@@ -310,7 +311,7 @@ void saveAutocorrelationToFile(const std::vector<double> &acors,
   }
   outFile.close();
 }
-void plotAutocorrelation(int param_idx) {
+static inline void plotAutocorrelation(int param_idx) {
   std::string command =
       "gnuplot -e \"set terminal png; set output 'autocorrelation_param_" +
       std::to_string(param_idx + 1) + ".png'; plot 'autocorrelation_param_" +
@@ -319,7 +320,7 @@ void plotAutocorrelation(int param_idx) {
       std::to_string(param_idx + 1) + "\"";
   system(command.c_str());
 }
-std::vector<std::vector<double>> filterChainByACF(
+static inline std::vector<std::vector<double>> filterChainByACF(
     const std::vector<std::vector<double>> &samples,
     double acf_threshold = 0.1, // Порог автокорреляции для фильтрации
     int acf_lag = 100,          // Максимальный лаг для автокорреляции
@@ -359,7 +360,8 @@ std::vector<std::vector<double>> filterChainByACF(
   return filtered_samples;
 }
 
-inline double dot(const std::vector<double> &a, const std::vector<double> &b) {
+static inline double dot(const std::vector<double> &a,
+                         const std::vector<double> &b) {
   double s = 0.0;
   for (size_t i = 0; i < a.size(); ++i)
     s += a[i] * b[i];
@@ -480,10 +482,9 @@ buildTree(const Model &model, const std::vector<double> &x,
           n_valid, keep,    sum_alpha, num_alpha};
 }
 
-std::vector<std::vector<double>> nuts(Model &model,
-                                      const std::vector<double> &initial_x,
-                                      int num_samples, double eps,
-                                      int max_depth = 10) {
+static inline std::vector<std::vector<double>>
+nuts(Model &model, const std::vector<double> &initial_x, int num_samples,
+     double eps, int max_depth = 10) {
   std::vector<double> x = initial_x;
   std::vector<std::vector<double>> samples;
 

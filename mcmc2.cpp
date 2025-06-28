@@ -124,74 +124,6 @@ public:
   }
 };
 
-static inline void integrate(std::vector<double> &x, std::vector<double> &v,
-                             const Model &model,
-                             const std::vector<double> &data, double epsilon,
-                             int num_steps) {
-  std::vector<double> grad, v_temp, x_temp;
-  int xSize = static_cast<int>(x.size());
-  int vSize = static_cast<int>(v.size());
-  for (int i = 0; i < num_steps; ++i) {
-    for (int j = 0; j < xSize; ++j) {
-      x[j] += epsilon * v[j];
-    }
-
-    grad = model.gradient(x, data);
-
-    v_temp = v;
-    x_temp = x;
-    for (int j = 0; j < vSize; ++j) {
-      v_temp[j] -= epsilon * grad[j];
-    }
-
-    for (int j = 0; j < vSize; ++j) {
-      v[j] += epsilon * v_temp[j];
-    }
-  }
-}
-
-static inline std::vector<std::vector<double>>
-hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
-    double epsilon, int num_steps) {
-  std::vector<double> x = initial_x;
-  std::vector<std::vector<double>> samples;
-  std::vector<double> v, x_new, v_new;
-  std::vector<std::vector<double>> data = model.getData();
-  double H_old, H_new, alpha, u;
-  int accepted = 0;
-  for (int n = 0; n < num_samples; ++n) {
-    if (n % (num_samples / 10) == 0) {
-      std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
-    }
-
-    v = model.generateRandomMomentum();
-    x_new = x;
-    v_new = v;
-
-    integrate(x_new, v_new, model, data[0], epsilon, num_steps);
-
-    H_old = model.Hamiltonian(x, v, data[0]);
-    H_new = model.Hamiltonian(x_new, v_new, data[0]);
-
-    alpha = std::min(1.0, exp(H_old - H_new));
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<> dis(0.0, 1.0);
-    u = dis(gen);
-
-    if (u < alpha) {
-      x = x_new;
-      accepted++;
-    }
-
-    samples.push_back(x);
-  }
-  // Диагностика: процент принятия
-  double acceptance_rate = static_cast<double>(accepted) / num_samples;
-  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%\n";
-  return samples;
-}
-
 static inline std::vector<double>
 computeMean(const std::vector<std::vector<double>> &samples) {
   std::vector<double> mean(samples[0].size(), 0.0);
@@ -359,7 +291,73 @@ static inline std::vector<std::vector<double>> filterChainByACF(
 
   return filtered_samples;
 }
+static inline void integrate(std::vector<double> &x, std::vector<double> &v,
+                             const Model &model,
+                             const std::vector<double> &data, double epsilon,
+                             int num_steps) {
+  std::vector<double> grad, v_temp, x_temp;
+  int xSize = static_cast<int>(x.size());
+  int vSize = static_cast<int>(v.size());
+  for (int i = 0; i < num_steps; ++i) {
+    for (int j = 0; j < xSize; ++j) {
+      x[j] += epsilon * v[j];
+    }
 
+    grad = model.gradient(x, data);
+
+    v_temp = v;
+    x_temp = x;
+    for (int j = 0; j < vSize; ++j) {
+      v_temp[j] -= epsilon * grad[j];
+    }
+
+    for (int j = 0; j < vSize; ++j) {
+      v[j] += epsilon * v_temp[j];
+    }
+  }
+}
+
+static inline std::vector<std::vector<double>>
+hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
+    double epsilon, int num_steps) {
+  std::vector<double> x = initial_x;
+  std::vector<std::vector<double>> samples;
+  std::vector<double> v, x_new, v_new;
+  std::vector<std::vector<double>> data = model.getData();
+  double H_old, H_new, alpha, u;
+  int accepted = 0;
+  for (int n = 0; n < num_samples; ++n) {
+    if (n % (num_samples / 10) == 0) {
+      std::cout << "Progress: " << (n * 100) / num_samples << "%\n";
+    }
+
+    v = model.generateRandomMomentum();
+    x_new = x;
+    v_new = v;
+
+    integrate(x_new, v_new, model, data[0], epsilon, num_steps);
+
+    H_old = model.Hamiltonian(x, v, data[0]);
+    H_new = model.Hamiltonian(x_new, v_new, data[0]);
+
+    alpha = std::min(1.0, exp(H_old - H_new));
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0.0, 1.0);
+    u = dis(gen);
+
+    if (u < alpha) {
+      x = x_new;
+      accepted++;
+    }
+
+    samples.push_back(x);
+  }
+  // Диагностика: процент принятия
+  double acceptance_rate = static_cast<double>(accepted) / num_samples;
+  std::cout << "Acceptance rate: " << acceptance_rate * 100.0 << "%\n";
+  return samples;
+}
 static inline double dot(const std::vector<double> &a,
                          const std::vector<double> &b) {
   double s = 0.0;
@@ -369,9 +367,9 @@ static inline double dot(const std::vector<double> &a,
 }
 
 // Leapfrog‑шаг (симплектовый интегратор)
-static void leapfrog(const Model &model, std::vector<double> &x,
-                     std::vector<double> &r, double eps,
-                     const std::vector<double> &data) {
+static void leapfrogNuts(const Model &model, std::vector<double> &x,
+                         std::vector<double> &r, double eps,
+                         const std::vector<double> &data) {
   // half‑step для импульса
   auto g = model.gradient(x, data);
   for (size_t i = 0; i < r.size(); ++i)
@@ -420,7 +418,7 @@ buildTree(const Model &model, const std::vector<double> &x,
     // Базовый случай: один leapfrog‑шаг
     std::vector<double> x1 = x;
     std::vector<double> r1 = r;
-    leapfrog(model, x1, r1, direction * eps, data);
+    leapfrogNuts(model, x1, r1, direction * eps, data);
 
     double H1 = model.Hamiltonian(x1, r1, data);
     bool valid = (log_u < -H1);

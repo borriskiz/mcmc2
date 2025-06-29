@@ -295,31 +295,44 @@ static inline std::vector<std::vector<double>> filterChainByACF(
 
   return filtered_samples;
 }
-static inline void integrate(std::vector<double> &x, std::vector<double> &v,
-                             const Model &model,
-                             const std::vector<double> &data, double epsilon,
-                             int num_steps) {
-  std::vector<double> grad, v_temp, x_temp;
-  int xSize = static_cast<int>(x.size());
-  int vSize = static_cast<int>(v.size());
-  for (int i = 0; i < num_steps; ++i) {
-    for (int j = 0; j < xSize; ++j) {
-      x[j] += epsilon * v[j];
+static inline void leapfrogHMC(std::vector<double> &x, std::vector<double> &v,
+                               const Model &model,
+                               const std::vector<double> &data, double epsilon,
+                               int num_steps) {
+  int dim = static_cast<int>(x.size());
+
+  // Первый градиент (для половинного шага по импульсу)
+  std::vector<double> grad = model.gradient(x, data);
+
+  // Начальный половинный шаг по импульсу
+  for (int i = 0; i < dim; ++i) {
+    v[i] -= 0.5 * epsilon * grad[i];
+  }
+
+  // Основной цикл интеграции
+  for (int step = 0; step < num_steps; ++step) {
+    // Полный шаг по координатам
+    for (int i = 0; i < dim; ++i) {
+      x[i] += epsilon * v[i];
     }
 
+    // Градиент на новой позиции (если не последний шаг)
     grad = model.gradient(x, data);
 
-    v_temp = v;
-    x_temp = x;
-    for (int j = 0; j < vSize; ++j) {
-      v_temp[j] -= epsilon * grad[j];
-    }
-
-    for (int j = 0; j < vSize; ++j) {
-      v[j] += epsilon * v_temp[j];
+    // Если это последний шаг — делаем только еще один половинный шаг по
+    // импульсу
+    if (step != num_steps - 1) {
+      for (int i = 0; i < dim; ++i) {
+        v[i] -= epsilon * grad[i];
+      }
+    } else {
+      for (int i = 0; i < dim; ++i) {
+        v[i] -= 0.5 * epsilon * grad[i];
+      }
     }
   }
 }
+
 
 static inline std::vector<std::vector<double>>
 hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
@@ -339,7 +352,7 @@ hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
     x_new = x;
     v_new = v;
 
-    integrate(x_new, v_new, model, data[0], epsilon, num_steps);
+    leapfrogHMC(x_new, v_new, model, data[0], epsilon, num_steps);
 
     H_old = model.Hamiltonian(x, v, data[0]);
     H_new = model.Hamiltonian(x_new, v_new, data[0]);
@@ -578,7 +591,7 @@ int main() {
   int dim = 3;
   int sampleSize = 20000;
   int L = 25;
-  double epsilon = 0.001;
+  double epsilon = 0.04;
   double noiseStddev = 0.1;
   double lowBound = -5.0;
   double upperBound = 5.0;

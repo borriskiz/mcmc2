@@ -503,6 +503,15 @@ nuts(Model &model, const std::vector<double> &initial_x, int num_samples,
 
   double alpha_sum_total = 0.0;
   size_t alpha_cnt_total = 0;
+  std::vector<double> r0;
+  std::vector<double> x_minus, x_plus;
+  std::vector<double> r_minus, r_plus;
+  std::vector<double> x_prop;
+  std::vector<double> x_m2, r_m2, x_p2, r_p2, x_prop2;
+  size_t n_valid2;
+  bool keep2;
+  double alpha_sum;
+  size_t num_alpha;
 
   for (int n = 0; n < num_samples; ++n) {
     if (n % (num_samples / 10) == 0) {
@@ -510,27 +519,21 @@ nuts(Model &model, const std::vector<double> &initial_x, int num_samples,
     }
 
     // Случайный импульс
-    std::vector<double> r0 = model.generateRandomMomentum();
+    r0 = model.generateRandomMomentum();
     double H0 = model.Hamiltonian(x, r0, data);
 
     std::uniform_real_distribution<> dis_u(0.0, 1.0);
     double log_u = std::log(dis_u(gen)) - H0;
 
     // Инициализируем дерево
-    std::vector<double> x_minus = x, x_plus = x;
-    std::vector<double> r_minus = r0, r_plus = r0;
-    std::vector<double> x_prop = x;
+    x_minus = x, x_plus = x;
+    r_minus = r0, r_plus = r0;
+    x_prop = x;
     size_t n_valid = 1;
     bool keep_sampling = true;
 
     for (int depth = 0; depth < max_depth && keep_sampling; ++depth) {
       int direction = (dis_u(gen) < 0.5) ? -1 : 1;
-
-      std::vector<double> x_m2, r_m2, x_p2, r_p2, x_prop2;
-      size_t n_valid2;
-      bool keep2;
-      double alpha_sum;
-      size_t num_alpha;
 
       if (direction == -1) {
         std::tie(x_m2, r_m2, x_p2, r_p2, x_prop2, n_valid2, keep2, alpha_sum,

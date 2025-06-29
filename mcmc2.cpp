@@ -89,12 +89,12 @@ public:
 
   double Hamiltonian(const std::vector<double> &x, const std::vector<double> &v,
                      const std::vector<double> &data) const {
-    double U_val = U(x, data); // Потенциальная энергия
+    double U_val = U(x, data);
     double K_val = 0.0;
     for (double vi : v) {
       K_val += vi * vi;
     }
-    return U_val + 0.5 * K_val; // Полный гамильтониан
+    return U_val + 0.5 * K_val;
   }
 
   std::vector<double> generateRandomMomentum() const {
@@ -319,20 +319,11 @@ static inline void leapfrogHMC(std::vector<double> &x, std::vector<double> &v,
     // Градиент на новой позиции (если не последний шаг)
     grad = model.gradient(x, data);
 
-    // Если это последний шаг — делаем только еще один половинный шаг по
-    // импульсу
-    if (step != num_steps - 1) {
-      for (int i = 0; i < dim; ++i) {
-        v[i] -= epsilon * grad[i];
-      }
-    } else {
-      for (int i = 0; i < dim; ++i) {
-        v[i] -= 0.5 * epsilon * grad[i];
-      }
+    for (int i = 0; i < dim; ++i) {
+      v[i] -= 0.5 * epsilon * grad[i];
     }
   }
 }
-
 
 static inline std::vector<std::vector<double>>
 hmc(Model &model, const std::vector<double> &initial_x, int num_samples,
@@ -591,7 +582,7 @@ int main() {
   int dim = 3;
   int sampleSize = 20000;
   int L = 25;
-  double epsilon = 0.04;
+  double epsilon = 0.01;
   double noiseStddev = 0.1;
   double lowBound = -5.0;
   double upperBound = 5.0;

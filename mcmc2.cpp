@@ -563,6 +563,14 @@ nuts(Model &model, const std::vector<double> &initial_x, int num_samples,
 
       n_valid += n_valid2;
       keep_sampling = !stopCriterion(x_minus, x_plus, r_minus, r_plus);
+
+      double mean_alpha = alpha_sum_total / alpha_cnt_total;
+
+      if (mean_alpha > 0.9) {
+        eps *= 1.2; // Увеличить шаг при высокой приемке
+      } else if (mean_alpha < 0.6) {
+        eps *= 0.8; // Уменьшить шаг при низкой приемке
+      }
     }
 
     x = x_prop;
